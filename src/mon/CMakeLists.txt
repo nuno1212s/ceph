@@ -24,7 +24,7 @@ set(lib_mon_srcs
   ../mds/MDSAuthCaps.cc
   ../mgr/mgr_commands.cc
   ../osd/OSDCap.cc
-  ../mgr/MgrCap.cc)
+  ../mgr/MgrCap.cc Service.cpp Service.h SMRProtocol.cc SMRProtocol.h AbstractMonitor.cc AbstractMonitor.h PaxosMonitor.cc PaxosMonitor.h)
 
 if(TARGET mgr_cap_obj)
   list(APPEND lib_mon_srcs $<TARGET_OBJECTS:mgr_cap_obj>)

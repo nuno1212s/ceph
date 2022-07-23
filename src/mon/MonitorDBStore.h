@@ -344,6 +344,7 @@ class MonitorDBStore
     int r = db->submit_transaction_sync(dbt);
     if (r >= 0) {
       while (!compact.empty()) {
+          //I guess this is basically checkpointing?
 	if (compact.front().second.first == std::string() &&
 	    compact.front().second.second == std::string())
 	  db->compact_prefix_async(compact.front().first);

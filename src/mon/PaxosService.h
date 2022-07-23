@@ -239,7 +239,7 @@ public:
    * extra check for is_writeable(), but it's a good practice to dissociate
    * requests for proposals from direct usage of propose_pending() for
    * future use -- we might want to perform additional checks or put a
-   * request on hold, for instance.
+   * request on hold, for instance..
    */
   void request_proposal() {
     ceph_assert(is_writeable());

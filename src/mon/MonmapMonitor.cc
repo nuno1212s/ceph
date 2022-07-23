@@ -1,4 +1,4 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*- 
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 /*
  * Ceph - scalable distributed file system
@@ -7,9 +7,9 @@
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License version 2.1, as published by the Free Software 
+ * License version 2.1, as published by the Free Software
  * Foundation.  See file COPYING.
- * 
+ *
  */
 
 #include "MonmapMonitor.h"
@@ -88,7 +88,7 @@ void MonmapMonitor::update_from_paxos(bool *need_bootstrap)
 
   dout(10) << __func__ << " version " << version
 	   << ", my v " << mon.monmap->epoch << dendl;
-  
+
   if (need_bootstrap && version != mon.monmap->get_epoch()) {
     dout(10) << " signaling that we need a bootstrap" << dendl;
     *need_bootstrap = true;
@@ -372,6 +372,7 @@ bool MonmapMonitor::preprocess_command(MonOpRequestRef op)
       stringstream ds;
       if (f) {
         f->open_object_section("monmap");
+        
         p->dump(f.get());
         f->open_array_section("quorum");
         for (set<int>::iterator q = mon.get_quorum().begin();
@@ -395,7 +396,7 @@ bool MonmapMonitor::preprocess_command(MonOpRequestRef op)
     }
 
   } else if (prefix == "mon feature ls") {
-   
+
     bool list_with_value = false;
     cmd_getval_compat_cephbool(cmdmap, "with_value", list_with_value);
 
@@ -433,7 +434,7 @@ bool MonmapMonitor::preprocess_command(MonOpRequestRef op)
       print_feature(p->persistent_features, "persistent");
       print_feature(p->optional_features, "optional");
       print_feature(required, "required");
-      f->close_section(); // monmap 
+      f->close_section(); // monmap
 
       f->close_section(); // features
       f->flush(ds);
@@ -479,7 +480,7 @@ bool MonmapMonitor::prepare_update(MonOpRequestRef op)
 {
   auto m = op->get_req<PaxosServiceMessage>();
   dout(7) << __func__ << " " << *m << " from " << m->get_orig_source_inst() << dendl;
-  
+
   switch (m->get_type()) {
   case MSG_MON_COMMAND:
     try {
@@ -682,9 +683,9 @@ bool MonmapMonitor::prepare_command(MonOpRequestRef op)
     } while (false);
 
     if (pending_map.stretch_mode_enabled) {
-      
+
     }
-    
+
     /* Given there's no delay between proposals on the MonmapMonitor (see
      * MonmapMonitor::should_propose()), there is no point in checking for
      * a mismatch between name and addr on pending_map.
