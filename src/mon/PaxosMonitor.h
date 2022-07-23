@@ -182,7 +182,7 @@ public:
     uint64_t sync_cookie;          ///< 0 if we are starting, non-zero otherwise
     bool sync_full;                ///< true if we are a full sync, false for recent catch-up
     version_t sync_start_version;  ///< last_committed at sync start
-    Context *sync_timeout_vent;   ///< timeout event
+    Context *sync_timeout_event;   ///< timeout event
 
     /**
      * floor for sync source
@@ -388,6 +388,8 @@ public:
     void forward_request_leader(MonOpRequestRef op);
     void handle_forward(MonOpRequestRef op);
 
+    void resend_routed_requests();
+
     void waitlist_or_zap_client(MonOpRequestRef op);
     void _ms_dispatch(Message *m) override;
 
@@ -411,6 +413,15 @@ public:
     /**
      * @} Time check end
      */
+
+    /** can_change_external_state if we can do things like
+     *  call elections as a result of the new map.
+     */
+    void notify_new_monmap(bool can_change_external_state=false);
+
+
+public:
+    PaxosMonitor(CephContext* cct_, MonitorDBStore *store, std::string nm, Messenger *m, Messenger *mgr_m, MonMap *map);
 };
 
 

@@ -114,8 +114,7 @@ using ceph::mono_clock;
 using ceph::mono_time;
 using ceph::timespan_str;
 
-void AbstractMonitor::_quorum_status(Formatter *f, ostream& ss)
-{
+void AbstractMonitor::_quorum_status(Formatter *f, ostream &ss) {
     bool free_formatter = false;
 
     if (!f) {
@@ -160,8 +159,7 @@ void AbstractMonitor::_quorum_status(Formatter *f, ostream& ss)
         delete f;
 }
 
-void AbstractMonitor::get_mon_status(Formatter *f)
-{
+void AbstractMonitor::get_mon_status(Formatter *f) {
     f->open_object_section("mon_status");
     f->dump_string("name", name);
     f->dump_int("rank", rank);
@@ -202,7 +200,7 @@ void AbstractMonitor::get_mon_status(Formatter *f)
     f->close_section(); // extra_probe_peers
 
     f->open_array_section("sync_provider");
-    for (map<uint64_t,SyncProvider>::const_iterator p = sync_providers.begin();
+    for (map<uint64_t, SyncProvider>::const_iterator p = sync_providers.begin();
          p != sync_providers.end();
          ++p) {
         f->dump_unsigned("cookie", p->second.cookie);
@@ -244,8 +242,7 @@ void AbstractMonitor::get_mon_status(Formatter *f)
 // back via the correct monitor and back to them.  (the monitor will not
 // initiate any connections.)
 
-void PaxosMonitor::forward_request_leader(MonOpRequestRef op)
-{
+void PaxosMonitor::forward_request_leader(MonOpRequestRef op) {
     op->mark_event(__func__);
 
     int mon = get_leader();
@@ -295,30 +292,35 @@ struct AnonConnection : public Connection {
     int send_message(Message *m) override {
         ceph_assert(!"send_message on anonymous connection");
     }
+
     void send_keepalive() override {
         ceph_assert(!"send_keepalive on anonymous connection");
     }
+
     void mark_down() override {
         // silently ignore
     }
+
     void mark_disposable() override {
         // silengtly ignore
     }
+
     bool is_connected() override { return false; }
+
     entity_addr_t get_peer_socket_addr() const override {
         return socket_addr;
     }
 
 private:
     FRIEND_MAKE_REF(AnonConnection);
-    explicit AnonConnection(CephContext *cct, const entity_addr_t& sa)
+
+    explicit AnonConnection(CephContext *cct, const entity_addr_t &sa)
             : Connection(cct, nullptr),
               socket_addr(sa) {}
 };
 
 //extract the original message and put it into the regular dispatch function
-void PaxosMonitor::handle_forward(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_forward(MonOpRequestRef op) {
     auto m = op->get_req<MForward>();
     dout(10) << "received forwarded message from "
              << ceph_entity_type_name(m->client_type)
@@ -337,7 +339,7 @@ void PaxosMonitor::handle_forward(MonOpRequestRef op)
         ceph_assert(req != NULL);
 
         auto c = ceph::make_ref<AnonConnection>(cct, m->client_socket_addr);
-        MonSession *s = new MonSession(static_cast<Connection*>(c.get()));
+        MonSession *s = new MonSession(static_cast<Connection *>(c.get()));
         s->_ident(req->get_source(),
                   req->get_source_addrs());
         c->set_priv(RefCountedPtr{s, false});
@@ -376,9 +378,50 @@ void PaxosMonitor::handle_forward(MonOpRequestRef op)
     }
 }
 
+void PaxosMonitor::resend_routed_requests() {
+    dout(10) << "resend_routed_requests" << dendl;
+    int mon = get_leader();
+    list<Context *> retry;
+    for (map<uint64_t, RoutedRequest *>::iterator p = routed_requests.begin();
+         p != routed_requests.end();
+         ++p) {
+        RoutedRequest *rr = p->second;
 
-void PaxosMonitor::set_mon_crush_location(const string& loc)
-{
+        if (mon == rank) {
+            dout(10) << " requeue for self tid " << rr->tid << dendl;
+            rr->op->mark_event("retry routed request");
+            retry.push_back(new C_RetryMessage(this, rr->op));
+            if (rr->session) {
+                ceph_assert(rr->session->routed_request_tids.count(p->first));
+                rr->session->routed_request_tids.erase(p->first);
+            }
+            delete rr;
+        } else {
+            auto q = rr->request_bl.cbegin();
+            PaxosServiceMessage *req =
+                    (PaxosServiceMessage *) decode_message(cct, 0, q);
+            rr->op->mark_event("resend forwarded message to leader");
+            dout(10) << " resend to mon." << mon << " tid " << rr->tid << " " << *req
+                     << dendl;
+            MForward *forward = new MForward(rr->tid,
+                                             req,
+                                             rr->con_features,
+                                             rr->session->caps);
+            req->put();  // forward takes its own ref; drop ours.
+            forward->client_type = rr->con->get_peer_type();
+            forward->client_addrs = rr->con->get_peer_addrs();
+            forward->client_socket_addr = rr->con->get_peer_socket_addr();
+            forward->set_priority(req->get_priority());
+            send_mon_message(forward, mon);
+        }
+    }
+    if (mon == rank) {
+        routed_requests.clear();
+        finish_contexts(g_ceph_context, retry);
+    }
+}
+
+void PaxosMonitor::set_mon_crush_location(const string &loc) {
     if (loc.empty()) {
         return;
     }
@@ -388,8 +431,7 @@ void PaxosMonitor::set_mon_crush_location(const string& loc)
     need_set_crush_loc = true;
 }
 
-void PaxosMonitor::notify_new_monmap(bool can_change_external_state)
-{
+void PaxosMonitor::notify_new_monmap(bool can_change_external_state) {
     if (need_set_crush_loc) {
         auto my_info_i = monmap->mon_info.find(name);
         if (my_info_i != monmap->mon_info.end() &&
@@ -419,8 +461,7 @@ void PaxosMonitor::notify_new_monmap(bool can_change_external_state)
     set_elector_disallowed_leaders(can_change_external_state);
 }
 
-void PaxosMonitor::waitlist_or_zap_client(MonOpRequestRef op)
-{
+void PaxosMonitor::waitlist_or_zap_client(MonOpRequestRef op) {
     /**
      * Wait list the new session until we're in the quorum, assuming it's
      * sufficiently new.
@@ -457,8 +498,7 @@ void PaxosMonitor::waitlist_or_zap_client(MonOpRequestRef op)
     }
 }
 
-void PaxosMonitor::_ms_dispatch(Message *m)
-{
+void PaxosMonitor::_ms_dispatch(Message *m) {
     if (is_shutdown()) {
         m->put();
         return;
@@ -570,11 +610,10 @@ void PaxosMonitor::_ms_dispatch(Message *m)
 
 int Monitor::do_admin_command(
         std::string_view command,
-        const cmdmap_t& cmdmap,
+        const cmdmap_t &cmdmap,
         Formatter *f,
-        std::ostream& err,
-        std::ostream& out)
-{
+        std::ostream &err,
+        std::ostream &out) {
     std::lock_guard l(lock);
 
     int r = 0;
@@ -633,10 +672,10 @@ int Monitor::do_admin_command(
         elector.stop_participating();
         out << "stopped responding to quorum, initiated new election";
     } else if (command == "ops") {
-        (void)op_tracker.dump_ops_in_flight(f);
+        (void) op_tracker.dump_ops_in_flight(f);
     } else if (command == "sessions") {
         f->open_array_section("sessions");
-        for (auto p : session_map.sessions) {
+        for (auto p: session_map.sessions) {
             f->dump_object("session", *p);
         }
         f->close_section();
@@ -645,7 +684,7 @@ int Monitor::do_admin_command(
             err << "op_tracker tracking is not enabled now, so no ops are tracked currently, even those get stuck. \
         please enable \"mon_enable_op_tracker\", and the tracker will start to track new ops received afterwards.";
         }
-    } else if (command == "dump_historic_ops_by_duration" ) {
+    } else if (command == "dump_historic_ops_by_duration") {
         if (op_tracker.dump_historic_ops(f, true)) {
             err << "op_tracker tracking is not enabled now, so no ops are tracked currently, even those get stuck. \
         please enable \"mon_enable_op_tracker\", and the tracker will start to track new ops received afterwards.";
@@ -698,7 +737,7 @@ int Monitor::do_admin_command(
         json_spirit::mObject json_map;
         uint64_t smart_timeout = cct->_conf.get_val<uint64_t>(
                 "mon_smart_report_timeout");
-        for (auto& devname : devnames) {
+        for (auto &devname: devnames) {
             string err;
             string devid = get_device_id(devname, &err);
             if (want_devid.size() && want_devid != devid) {
@@ -764,8 +803,7 @@ int Monitor::do_admin_command(
 }
 
 
-void PaxosMonitor::handle_timecheck_leader(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_timecheck_leader(MonOpRequestRef op) {
     auto m = op->get_req<MTimeCheck2>();
     dout(10) << __func__ << " " << *m << dendl;
     /* handles PONG's */
@@ -803,12 +841,12 @@ void PaxosMonitor::handle_timecheck_leader(MonOpRequestRef op)
     }
 
     /* update peer latencies */
-    double latency = (double)(curr_time - timecheck_sent);
+    double latency = (double) (curr_time - timecheck_sent);
 
     if (timecheck_latencies.count(other) == 0)
         timecheck_latencies[other] = latency;
     else {
-        double avg_latency = ((timecheck_latencies[other]*0.8)+(latency*0.2));
+        double avg_latency = ((timecheck_latencies[other] * 0.8) + (latency * 0.2));
         timecheck_latencies[other] = avg_latency;
     }
 
@@ -882,8 +920,7 @@ void PaxosMonitor::handle_timecheck_leader(MonOpRequestRef op)
     }
 }
 
-void PaxosMonitor::handle_timecheck_peon(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_timecheck_peon(MonOpRequestRef op) {
     auto m = op->get_req<MTimeCheck2>();
     dout(10) << __func__ << " " << *m << dendl;
 
@@ -924,8 +961,7 @@ void PaxosMonitor::handle_timecheck_peon(MonOpRequestRef op)
     m->get_connection()->send_message(reply);
 }
 
-void PaxosMonitor::handle_timecheck(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_timecheck(MonOpRequestRef op) {
     auto m = op->get_req<MTimeCheck2>();
     dout(10) << __func__ << " " << *m << dendl;
 
@@ -946,8 +982,7 @@ void PaxosMonitor::handle_timecheck(MonOpRequestRef op)
     }
 }
 
-void PaxosMonitor::handle_get_version(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_get_version(MonOpRequestRef op) {
     auto m = op->get_req<MMonGetVersion>();
     dout(10) << "handle_get_version " << *m << dendl;
     PaxosService *svc = NULL;
@@ -992,9 +1027,8 @@ void PaxosMonitor::handle_get_version(MonOpRequestRef op)
 }
 
 bool Monitor::_add_bootstrap_peer_hint(std::string_view cmd,
-                                       const cmdmap_t& cmdmap,
-                                       ostream& ss)
-{
+                                       const cmdmap_t &cmdmap,
+                                       ostream &ss) {
     if (is_leader() || is_peon()) {
         ss << "mon already active; ignoring bootstrap hint";
         return true;
@@ -1044,4 +1078,25 @@ bool Monitor::_add_bootstrap_peer_hint(std::string_view cmd,
     extra_probe_peers.insert(addrs);
     ss << "adding peer " << addrs << " to list: " << extra_probe_peers;
     return true;
+}
+
+PaxosMonitor::PaxosMonitor(CephContext *cct_, MonitorDBStore *store, std::string nm, Messenger *m, Messenger *mgr_m,
+                           MonMap *map)
+        : AbstractMonitor(cct_, store, nm, m, mgr_m, map),
+          elector(this, map->strategy),
+          required_features(0),
+          leader(0),
+        // sync state
+          sync_provider_count(0),
+          sync_cookie(0),
+          sync_full(false),
+          sync_start_version(0),
+          sync_timeout_event(NULL),
+          sync_last_committed_floor(0),
+        // scrub
+          scrub_version(0),
+          scrub_event(NULL),
+          scrub_timeout_event(NULL),
+{
+
 }

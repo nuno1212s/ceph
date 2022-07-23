@@ -1071,6 +1071,103 @@ void AbstractMonitor::reply_tell_command(
     m->get_connection()->send_message(reply);
 }
 
+void AbstractMonitor::send_reply(MonOpRequestRef op, Message *reply)
+{
+    op->mark_event(__func__);
+
+    MonSession *session = op->get_session();
+    ceph_assert(session);
+    Message *req = op->get_req();
+    ConnectionRef con = op->get_connection();
+
+    reply->set_cct(g_ceph_context);
+    dout(2) << __func__ << " " << op << " " << reply << " " << *reply << dendl;
+
+    if (!con) {
+        dout(2) << "send_reply no connection, dropping reply " << *reply
+                << " to " << req << " " << *req << dendl;
+        reply->put();
+        op->mark_event("reply: no connection");
+        return;
+    }
+
+    if (!session->con && !session->proxy_con) {
+        dout(2) << "send_reply no connection, dropping reply " << *reply
+                << " to " << req << " " << *req << dendl;
+        reply->put();
+        op->mark_event("reply: no connection");
+        return;
+    }
+
+    if (session->proxy_con) {
+        dout(15) << "send_reply routing reply to " << con->get_peer_addr()
+                 << " via " << session->proxy_con->get_peer_addr()
+                 << " for request " << *req << dendl;
+        session->proxy_con->send_message(new MRoute(session->proxy_tid, reply));
+        op->mark_event("reply: send routed request");
+    } else {
+        session->con->send_message(reply);
+        op->mark_event("reply: send");
+    }
+}
+
+void AbstractMonitor::no_reply(MonOpRequestRef op)
+{
+    MonSession *session = op->get_session();
+    Message *req = op->get_req();
+
+    if (session->proxy_con) {
+        dout(10) << "no_reply to " << req->get_source_inst()
+                 << " via " << session->proxy_con->get_peer_addr()
+                 << " for request " << *req << dendl;
+        session->proxy_con->send_message(new MRoute(session->proxy_tid, NULL));
+        op->mark_event("no_reply: send routed request");
+    } else {
+        dout(10) << "no_reply to " << req->get_source_inst()
+                 << " " << *req << dendl;
+        op->mark_event("no_reply");
+    }
+}
+
+void AbstractMonitor::send_mon_message(Message *m, int rank)
+{
+    messenger->send_to_mon(m, monmap->get_addrs(rank));
+}
+
+void AbstractMonitor::remove_session(MonSession *s)
+{
+    dout(10) << "remove_session " << s << " " << s->name << " " << s->addrs
+             << " features 0x" << std::hex << s->con_features << std::dec << dendl;
+    ceph_assert(s->con);
+    ceph_assert(!s->closed);
+    for (set<uint64_t>::iterator p = s->routed_request_tids.begin();
+         p != s->routed_request_tids.end();
+         ++p) {
+        ceph_assert(routed_requests.count(*p));
+        RoutedRequest *rr = routed_requests[*p];
+        dout(10) << " dropping routed request " << rr->tid << dendl;
+        delete rr;
+        routed_requests.erase(*p);
+    }
+    s->routed_request_tids.clear();
+    s->con->set_priv(nullptr);
+    session_map.remove_session(s);
+    logger->set(l_mon_num_sessions, session_map.get_size());
+    logger->inc(l_mon_session_rm);
+}
+
+void AbstractMonitor::remove_all_sessions()
+{
+    std::lock_guard l(session_map_lock);
+    while (!session_map.sessions.empty()) {
+        MonSession *s = session_map.sessions.front();
+        remove_session(s);
+        logger->inc(l_mon_session_rm);
+    }
+    if (logger)
+        logger->set(l_mon_num_sessions, session_map.get_size());
+}
+
 vector<DaemonHealthMetric> AbstractMonitor::get_health_metrics()
 {
     vector<DaemonHealthMetric> metrics;

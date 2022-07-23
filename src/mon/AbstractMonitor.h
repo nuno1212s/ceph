@@ -2,7 +2,6 @@
 #define CEPH_ABSTRACTMONITOR_H
 
 
-#include <errno.h>
 #include <cmath>
 #include <string>
 #include <array>
@@ -406,19 +405,12 @@ public:
     uint64_t routed_request_tid;
     std::map<uint64_t, RoutedRequest*> routed_requests;
 
-    void forward_request_leader(MonOpRequestRef op);
-    void handle_forward(MonOpRequestRef op);
     void send_reply(MonOpRequestRef op, Message *reply);
     void no_reply(MonOpRequestRef op);
-    void resend_routed_requests();
     void remove_session(MonSession *s);
     void remove_all_sessions();
 
     void send_mon_message(Message *m, int rank);
-    /** can_change_external_state if we can do things like
-     *  call elections as a result of the new map.
-     */
-    void notify_new_monmap(bool can_change_external_state=false);
 
 public:
     struct C_Command : public C_MonOp {
