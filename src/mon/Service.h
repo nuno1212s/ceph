@@ -2,6 +2,8 @@
 #define CEPH_SERVICE_H
 
 #include "Monitor.h"
+#include "AbstractMonitor.h"
+#include "SMRProtocol.h"
 
 class Service {
 
@@ -10,7 +12,12 @@ public:
     /**
      * Reference to the monitor class that is associated with this service
      */
-    Monitor &mon;
+    AbstractMonitor &mon;
+
+    /**
+     * The SMR protocol instance to which this class is associated with
+     */
+    SMRProtocol &smr_protocol;
 
     /**
      * The name of this service
@@ -155,13 +162,18 @@ protected:
      * @param mon
      * @param name
      */
-    Service(Monitor &mon, std::string name) : mon(mon), service_name(name), proposing(false),
-                                              last_committed_name("last_committed"),
-                                              first_committed_name("first_committed"),
-                                              full_prefix_name("full"),
-                                              full_latest_name("latest"),
-                                              service_version(0), have_pending(false),
-                                              cached_first_committed(0), cached_last_committed(0) {}
+    Service(AbstractMonitor &mon, SMRProtocol &smr_protocol, std::string name) : mon(mon),
+                                                                                 smr_protocol(smr_protocol),
+                                                                                 service_name(name), proposing(false),
+                                                                                 last_committed_name("last_committed"),
+                                                                                 first_committed_name(
+                                                                                         "first_committed"),
+                                                                                 full_prefix_name("full"),
+                                                                                 full_latest_name("latest"),
+                                                                                 service_version(0),
+                                                                                 have_pending(false),
+                                                                                 cached_first_committed(0),
+                                                                                 cached_last_committed(0) {}
 
     virtual ~Service() {}
 
@@ -176,6 +188,227 @@ private:
      * @post have_pending is true if our Monitor is this view's leader
      */
     void _active();
+
+public:
+
+    /**
+     * Get the service's name.
+     *
+     * @returns The service's name.
+     */
+    const std::string &get_service_name() const { return service_name; }
+
+    /**
+     * Get the store prefixes we utilize
+     */
+    virtual void get_store_prefixes(std::set<std::string> &s) const {
+        s.insert(service_name);
+    }
+
+    /**
+     * Dispatch a message by passing it to several different functions that are
+     * either implemented directly by this service, or that should be implemented
+     * by the class implementing this service.
+     *
+     * @param m A message
+     * @returns 'true' on successful dispatch; 'false' otherwise.
+     */
+    bool dispatch(MonOpRequestRef op);
+
+
+    /**
+     * @defgroup PaxosService_h_store_funcs Back storage interface functions
+     * @{
+     */
+    /**
+     * @defgroup PaxosService_h_store_modify Wrapper function interface to access
+     *					   the back store for modification
+     *					   purposes
+     * @{
+     */
+    void put_first_committed(MonitorDBStore::TransactionRef t, version_t ver) {
+        t->put(get_service_name(), first_committed_name, ver);
+    }
+
+    /**
+     * Set the last committed version to @p ver
+     *
+     * @param t A transaction to which we add this put operation
+     * @param ver The last committed version number being put
+     */
+    void put_last_committed(MonitorDBStore::TransactionRef t, version_t ver) {
+        t->put(get_service_name(), last_committed_name, ver);
+
+        /* We only need to do this once, and that is when we are about to make our
+         * first proposal. There are some services that rely on first_committed
+         * being set -- and it should! -- so we need to guarantee that it is,
+         * specially because the services itself do not do it themselves. They do
+         * rely on it, but they expect us to deal with it, and so we shall.
+         */
+        if (!get_first_committed())
+            put_first_committed(t, ver);
+    }
+
+    /**
+     * Put the contents of @p bl into version @p ver
+     *
+     * @param t A transaction to which we will add this put operation
+     * @param ver The version to which we will add the value
+     * @param bl A ceph::buffer::list containing the version's value
+     */
+    void put_version(MonitorDBStore::TransactionRef t, version_t ver,
+                     ceph::buffer::list &bl) {
+        t->put(get_service_name(), ver, bl);
+    }
+
+    /**
+     * Put the contents of @p bl into a full version key for this service, that
+     * will be created with @p ver in mind.
+     *
+     * @param t The transaction to which we will add this put operation
+     * @param ver A version number
+     * @param bl A ceph::buffer::list containing the version's value
+     */
+    void put_version_full(MonitorDBStore::TransactionRef t,
+                          version_t ver, ceph::buffer::list &bl) {
+        std::string key = mon.store->combine_strings(full_prefix_name, ver);
+        t->put(get_service_name(), key, bl);
+    }
+
+    /**
+     * Put the version number in @p ver into the key pointing to the latest full
+     * version of this service.
+     *
+     * @param t The transaction to which we will add this put operation
+     * @param ver A version number
+     */
+    void put_version_latest_full(MonitorDBStore::TransactionRef t, version_t ver) {
+        std::string key = mon.store->combine_strings(full_prefix_name, full_latest_name);
+        t->put(get_service_name(), key, ver);
+    }
+
+    /**
+     * Put the contents of @p bl into the key @p key.
+     *
+     * @param t A transaction to which we will add this put operation
+     * @param key The key to which we will add the value
+     * @param bl A ceph::buffer::list containing the value
+     */
+    void put_value(MonitorDBStore::TransactionRef t,
+                   const std::string &key, ceph::buffer::list &bl) {
+        t->put(get_service_name(), key, bl);
+    }
+
+    /**
+     * Put integer value @v into the key @p key.
+     *
+     * @param t A transaction to which we will add this put operation
+     * @param key The key to which we will add the value
+     * @param v An integer
+     */
+    void put_value(MonitorDBStore::TransactionRef t,
+                   const std::string &key, version_t v) {
+        t->put(get_service_name(), key, v);
+    }
+
+    /**
+     * @}
+     */
+
+    /**
+     * Get the first committed version
+     *
+     * @returns Our first committed version (that is available)
+     */
+    version_t get_first_committed() const {
+        return cached_first_committed;
+    }
+
+    /**
+     * Get the last committed version
+     *
+     * @returns Our last committed version
+     */
+    version_t get_last_committed() const {
+        return cached_last_committed;
+    }
+
+    /**
+     * @}
+     */
+
+    /**
+    * @defgroup PaxosService_h_store_get Wrapper function interface to access
+    *					the back store for reading purposes
+    * @{
+    */
+
+    /**
+     * @defgroup PaxosService_h_version_cache Obtain cached versions for this
+     *                                        service.
+     * @{
+     */
+
+    /**
+     * Get the contents of a given version @p ver
+     *
+     * @param ver The version being obtained
+     * @param bl The ceph::buffer::list to be populated
+     * @return 0 on success; <0 otherwise
+     */
+    virtual int get_version(version_t ver, ceph::buffer::list &bl) {
+        return mon.store->get(get_service_name(), ver, bl);
+    }
+
+    /**
+     * Get the contents of a given full version of this service.
+     *
+     * @param ver A version number
+     * @param bl The ceph::buffer::list to be populated
+     * @returns 0 on success; <0 otherwise
+     */
+    virtual int get_version_full(version_t ver, ceph::buffer::list &bl) {
+        std::string key = mon.store->combine_strings(full_prefix_name, ver);
+        return mon.store->get(get_service_name(), key, bl);
+    }
+
+    /**
+     * Get the latest full version number
+     *
+     * @returns A version number
+     */
+    version_t get_version_latest_full() {
+        std::string key = mon.store->combine_strings(full_prefix_name, full_latest_name);
+        return mon.store->get(get_service_name(), key);
+    }
+
+    /**
+     * Get a value from a given key.
+     *
+     * @param[in] key The key
+     * @param[out] bl The ceph::buffer::list to be populated with the value
+     */
+    int get_value(const std::string &key, ceph::buffer::list &bl) {
+        return mon.store->get(get_service_name(), key, bl);
+    }
+
+    /**
+     * Get an integer value from a given key.
+     *
+     * @param[in] key The key
+     */
+    version_t get_value(const std::string &key) {
+        return mon.store->get(get_service_name(), key);
+    }
+
+    /**
+     * @}
+     */
+
+    /**
+     * @}
+     */
+
 };
 
 #endif //CEPH_SERVICE_H
