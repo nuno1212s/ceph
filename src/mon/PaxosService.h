@@ -179,6 +179,7 @@ public:
    * This means that we will cancel our proposal_timer event, if any exists.
    */
   void restart();
+
   /**
    * Informs this instance that an election has finished.
    *

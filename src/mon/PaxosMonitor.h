@@ -88,6 +88,7 @@ private:
     void disconnect_disallowed_stretch_sessions();
     void set_elector_disallowed_leaders(bool allow_election);
 
+public
     epoch_t get_epoch();
     int get_leader() const { return leader; }
     std::string get_leader_name() {

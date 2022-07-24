@@ -7,69 +7,85 @@
 #include "AbstractMonitor.h"
 
 class SMRProtocol {
-
-    AbstractMonitor &mon;
-
-    PerfCounters *logger;
-
-
-    /**
-     * @defgroup Active vars Common active-related member variables
-     * @{
-     */
-    /**
-     * When does our read lease expires.
-     *
-     * Instead of performing a full commit each time a read is requested, we
-     * keep leases. Each lease will have an expiration date, which may or may
-     * not be extended.
-     */
-    ceph::real_clock::time_point lease_expire;
-    /**
-     * List of callbacks waiting for our state to change into STATE_ACTIVE.
-     */
-    std::list<Context *> waiting_for_active;
-    /**
-     * List of callbacks waiting for the chance to read a version from us.
-     *
-     * Each entry on the list may result from an attempt to read a version that
-     * wasn't available at the time, or an attempt made during a period during
-     * which we could not satisfy the read request. The first case happens if
-     * the requested version is greater than our last committed version. The
-     * second scenario may happen if we are recovering, or if we don't have a
-     * valid lease.
-     *
-     * The list will be woken up once we change to STATE_ACTIVE with an extended
-     * lease -- which can be achieved if we have everyone on the quorum on board
-     * with the latest proposal, or if we don't really care about the remaining
-     * uncommitted values --, or if we're on a quorum of one.
-     */
-    std::list<Context *> waiting_for_readable;
-
     /**
      * @}
      */
 
     virtual std::string get_name() const = 0;
 
-
+public:
     virtual void init_logger() = 0;
 
     virtual void init() = 0;
 
-    virtual bool is_active() = 0;
+    virtual bool is_active() const = 0;
 
-    virtual bool is_updating() = 0;
+    virtual bool is_updating() const = 0;
 
-    virtual bool is_readable(version_t v) = 0;
+    /**
+     * Check if a given version is readable.
+     *
+     * A version may not be readable for a myriad of reasons:
+     *  @li the version @e v is higher that the last committed version
+     *  @li we are not the Leader nor a Peon (election may be on-going)
+     *  @li we do not have a committed value yet
+     *  @li we do not have a valid lease
+     *
+     * @param seen The version we want to check if it is readable.
+     * @return 'true' if the version is readable; 'false' otherwise.
+     */
+    virtual bool is_readable(version_t v) const = 0;
 
-    virtual bool is_writing() = 0;
+    /**
+     * Check if we are writeable.
+     *
+     * We are writeable if we are alone (i.e., a quorum of one), or if we match
+     * all the following conditions:
+     *  @li We are the Leader
+     *  @li We are on STATE_ACTIVE
+     *  @li We have a valid lease
+     *
+     * @return 'true' if we are writeable; 'false' otherwise.
+     */
+    virtual bool is_writeable() = 0;
 
+    virtual bool is_writing() const = 0;
+
+    /**
+     * Add c to the list of callbacks waiting for us to become active.
+     *
+     * @param c A callback
+     */
     virtual void wait_for_active(MonOpRequestRef o, Context *c) = 0;
 
+    void wait_for_active(Context *c) {
+        MonOpRequestRef o;
+        wait_for_active(o, c);
+    }
+
+    /**
+     * Add onreadable to the list of callbacks waiting for us to become readable.
+     *
+     * @param onreadable A callback
+     */
     virtual void wait_for_readable(MonOpRequestRef o, Context *c, version_t ver) = 0;
 
+    void wait_for_readable(Context *onreadable, version_t ver) {
+        MonOpRequestRef o;
+        wait_for_readable(o, onreadable, ver);
+    }
+
+    /**
+    * Add c to the list of callbacks waiting for us to become writeable.
+    *
+    * @param c A callback
+    */
     virtual void wait_for_writeable(MonOpRequestRef o, Context *c) = 0;
+
+    void wait_for_writeable(Context *c) {
+        MonOpRequestRef o;
+        wait_for_writeable(o, c);
+    }
 
     virtual bool is_writing_previous() = 0;
 
@@ -92,15 +108,23 @@ class SMRProtocol {
      */
     virtual version_t get_version() = 0;
 
-    virtual void leader_init() = 0;
-
-    virtual void peon_init() = 0;
-
+    /**
+     * dump state info to a formatter
+     */
     virtual void dump_info(Formatter *f) = 0;
 
     virtual void restart() = 0;
 
     virtual void shutdown() = 0;
+
+    /**
+    * Read key @e key and store its value in @e bl
+    *
+    * @param[in] key The key we want to read
+    * @param[out] bl The version's value
+    * @return 'true' if we successfully read the value; 'false' otherwise
+    */
+    virtual bool read(const std::string &key, ceph::buffer::list &bl) = 0;
 
     /**
     * Read version @e v and store its value in @e bl
@@ -120,7 +144,6 @@ class SMRProtocol {
      */
     virtual version_t read_current(ceph::buffer::list &bl) = 0;
 
-
     /**
      * Get a transaction to submit operations to propose against
      *
@@ -130,6 +153,10 @@ class SMRProtocol {
      */
     virtual MonitorDBStore::TransactionRef get_pending_transaction() = 0;
 
+    /**
+     * Cancel all of Paxos' timeout/renew events.
+     */
+    virtual void cancel_events() = 0;
 };
 
 

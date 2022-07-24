@@ -140,7 +140,7 @@ protected:
     };
 
     class C_ReplyOp : public C_MonOp {
-        Monitor &mon;
+        AbstractMonitor &mon;
         MonOpRequestRef op;
         MessageRef reply;
     public:
@@ -205,6 +205,83 @@ public:
         s.insert(service_name);
     }
 
+    // i implement and you ignore
+    /**
+     * Informs this instance that it should consider itself restarted.
+     *
+     * This means that we will cancel our proposal_timer event, if any exists.
+     */
+    void restart();
+
+    /**
+     * Informs this instance that an election has finished.
+     *
+     * This means that we will invoke a PaxosService::discard_pending while
+     * setting have_pending to false (basically, ignore our pending state) and
+     * we will then make sure we obtain a new state.
+     *
+     * Our state shall be updated by PaxosService::_active if the Paxos is
+     * active; otherwise, we will wait for it to become active by adding a
+     * PaxosService::C_Active callback to it.
+     */
+    void election_finished();
+
+    /**
+     * Informs this instance that it is supposed to shutdown.
+     *
+     * Basically, it will instruct SMR to cancel all events/callbacks and then
+     * will cancel the proposal_timer event if any exists.
+     */
+    void shutdown();
+
+    /**
+     * Propose a new value through Paxos.
+     *
+     * This function should be called by the classes implementing
+     * PaxosService, in order to propose a new value through Paxos.
+     *
+     * @pre The implementation class implements the encode_pending function.
+     * @pre have_pending is true
+     * @pre Our monitor is the Leader
+     * @pre Paxos is active
+     * @post Cancel the proposal timer, if any
+     * @post have_pending is false
+     * @post propose pending value through Paxos
+     *
+     * @note This function depends on the implementation of encode_pending on
+     *	   the class that is implementing PaxosService
+     */
+    void propose_pending();
+
+    /**
+     * Let others request us to propose.
+     *
+     * At the moment, this is just a wrapper to propose_pending() with an
+     * extra check for is_writeable(), but it's a good practice to dissociate
+     * requests for proposals from direct usage of propose_pending() for
+     * future use -- we might want to perform additional checks or put a
+     * request on hold, for instance..
+     */
+    void request_proposal() {
+        ceph_assert(is_writeable());
+
+        propose_pending();
+    }
+
+    /**
+     * Request service @p other to perform a proposal.
+     *
+     * We could simply use the function above, requesting @p other directly,
+     * but we might eventually want to do something to the request -- say,
+     * set a flag stating we're waiting on a cross-proposal to be finished.
+     */
+    void request_proposal(Service *other) {
+        ceph_assert(other != NULL);
+        ceph_assert(other->is_writeable());
+
+        other->request_proposal();
+    }
+
     /**
      * Dispatch a message by passing it to several different functions that are
      * either implemented directly by this service, or that should be implemented
@@ -215,13 +292,190 @@ public:
      */
     bool dispatch(MonOpRequestRef op);
 
+    void refresh(bool *need_bootstrap);
+    void post_refresh();
+
 
     /**
-     * @defgroup PaxosService_h_store_funcs Back storage interface functions
+     * @defgroup PaxosService_h_override_funcs Functions that should be
+     *					     overridden.
+     *
+     * These functions should be overridden at will by the class implementing
+     * this service.
      * @{
      */
     /**
-     * @defgroup PaxosService_h_store_modify Wrapper function interface to access
+     * Create the initial state for your system.
+     *
+     * In some of ours the state is actually set up elsewhere so this does
+     * nothing.
+     */
+    virtual void create_initial() = 0;
+
+    /**
+     * Query the Paxos system for the latest state and apply it if it's newer
+     * than the current Monitor state.
+     */
+    virtual void update_from_paxos(bool *need_bootstrap) = 0;
+
+    /**
+     * Hook called after all services have refreshed their state from paxos
+     *
+     * This is useful for doing any update work that depends on other
+     * service's having up-to-date state.
+     */
+    virtual void post_paxos_update() {}
+
+    /**
+     * Init on startup
+     *
+     * This is called on mon startup, after all of the PaxosService instances'
+     * update_from_paxos() methods have been called
+     */
+    virtual void init() {}
+
+    /**
+     * Create the pending state.
+     *
+     * @invariant This function is only called on a Leader.
+     * @remarks This created state is then modified by incoming messages.
+     * @remarks Called at startup and after every Paxos ratification round.
+     */
+    virtual void create_pending() = 0;
+
+    /**
+     * Encode the pending state into a ceph::buffer::list for ratification and
+     * transmission as the next state.
+     *
+     * @invariant This function is only called on a Leader.
+     *
+     * @param t The transaction to hold all changes.
+     */
+    virtual void encode_pending(MonitorDBStore::TransactionRef t) = 0;
+
+    /**
+     * Discard the pending state
+     *
+     * @invariant This function is only called on a Leader.
+     *
+     * @remarks This function is NOT overridden in any of our code, but it is
+     *	      called in PaxosService::election_finished if have_pending is
+     *	      true.
+     */
+    virtual void discard_pending() { }
+
+    /**
+     * Look at the query; if the query can be handled without changing state,
+     * do so.
+     *
+     * @param m A query message
+     * @returns 'true' if the query was handled (e.g., was a read that got
+     *	      answered, was a state change that has no effect); 'false'
+     *	      otherwise.
+     */
+    virtual bool preprocess_query(MonOpRequestRef op) = 0;
+
+    /**
+     * Apply the message to the pending state.
+     *
+     * @invariant This function is only called on a Leader.
+     *
+     * @param m An update message
+     * @returns 'true' if the update message was handled (e.g., a command that
+     *	      went through); 'false' otherwise.
+     */
+    virtual bool prepare_update(MonOpRequestRef op) = 0;
+    /**
+     * @}
+     */
+
+    /**
+     * Determine if the Paxos system should vote on pending, and if so how long
+     * it should wait to vote.
+     *
+     * @param[out] delay The wait time, used so we can limit the update traffic
+     *		       spamming.
+     * @returns 'true' if the Paxos system should propose; 'false' otherwise.
+     */
+    virtual bool should_propose(double &delay);
+
+    /**
+     * force an immediate propose.
+     *
+     * This is meant to be called from prepare_update(op).
+     */
+    void force_immediate_propose() {
+        need_immediate_propose = true;
+    }
+
+    /**
+     * @defgroup PaxosService_h_courtesy Courtesy functions
+     *
+     * Courtesy functions, in case the class implementing this service has
+     * anything it wants/needs to do at these times.
+     * @{
+     */
+    /**
+     * This is called when the Paxos state goes to active.
+     *
+     * On the peon, this is after each election.
+     * On the leader, this is after each election, *and* after each completed
+     * proposal.
+     *
+     * @note This function may get called twice in certain recovery cases.
+     */
+    virtual void on_active() { }
+
+    /**
+     * This is called when we are shutting down
+     */
+    virtual void on_shutdown() {}
+
+    /**
+     * this is called when activating on the leader
+     *
+     * it should conditionally upgrade the on-disk format by proposing a transaction
+     */
+    virtual void upgrade_format() { }
+
+    /**
+     * this is called when we detect the store has just upgraded underneath us
+     */
+    virtual void on_upgrade() {}
+
+    /**
+     * Called when the Paxos system enters a Leader election.
+     *
+     * @remarks It's a courtesy method, in case the class implementing this
+     *	      service has anything it wants/needs to do at that time.
+     */
+    virtual void on_restart() { }
+    /**
+     * @}
+     */
+
+    /**
+     * Tick.
+     */
+    virtual void tick() {}
+
+    void encode_health(const health_check_map_t& next,
+                       MonitorDBStore::TransactionRef t) {
+        using ceph::encode;
+        ceph::buffer::list bl;
+        encode(next, bl);
+        t->put("health", service_name, bl);
+        mon.log_health(next, health_checks, t);
+    }
+
+    void load_health();
+
+    /**
+     * @defgroup Service_h_store_funcs Back storage interface functions
+     * @{
+     */
+    /**
+     * @defgroup Service_h_store_modify Wrapper function interface to access
      *					   the back store for modification
      *					   purposes
      * @{
@@ -357,6 +611,7 @@ public:
      * @return 0 on success; <0 otherwise
      */
     virtual int get_version(version_t ver, ceph::buffer::list &bl) {
+        //TODO: Fix this
         return mon.store->get(get_service_name(), ver, bl);
     }
 
@@ -368,6 +623,7 @@ public:
      * @returns 0 on success; <0 otherwise
      */
     virtual int get_version_full(version_t ver, ceph::buffer::list &bl) {
+        //TODO: Fix this
         std::string key = mon.store->combine_strings(full_prefix_name, ver);
         return mon.store->get(get_service_name(), key, bl);
     }
@@ -378,6 +634,7 @@ public:
      * @returns A version number
      */
     version_t get_version_latest_full() {
+        //TODO: Fix this
         std::string key = mon.store->combine_strings(full_prefix_name, full_latest_name);
         return mon.store->get(get_service_name(), key);
     }
@@ -389,6 +646,7 @@ public:
      * @param[out] bl The ceph::buffer::list to be populated with the value
      */
     int get_value(const std::string &key, ceph::buffer::list &bl) {
+        //TODO: Fix this
         return mon.store->get(get_service_name(), key, bl);
     }
 
@@ -398,6 +656,9 @@ public:
      * @param[in] key The key
      */
     version_t get_value(const std::string &key) {
+        //TODO: Fix this (Read from SMR)
+
+
         return mon.store->get(get_service_name(), key);
     }
 
@@ -408,6 +669,213 @@ public:
     /**
      * @}
      */
+public:
+
+    /**
+     * Check if we are proposing a value through Paxos
+     *
+     * @returns true if we are proposing; false otherwise.
+     */
+    bool is_proposing() const {
+        return proposing;
+    }
+
+    /**
+     * Check if we are in the Paxos ACTIVE state.
+     *
+     * @note This function is a wrapper for Paxos::is_active
+     *
+     * @returns true if in state ACTIVE; false otherwise.
+     */
+    bool is_active() const {
+        return
+                !is_proposing() &&
+                (smr_protocol.is_active() || smr_protocol.is_updating() || smr_protocol.is_writing());
+    }
+
+    /**
+     * Check if we are readable.
+     *
+     * This mirrors on the paxos check, except that we also verify that
+     *
+     *  - the client hasn't seen the future relative to this PaxosService
+     *  - this service isn't proposing.
+     *  - we have committed our initial state (last_committed > 0)
+     *
+     * @param ver The version we want to check if is readable
+     * @returns true if it is readable; false otherwise
+     */
+    bool is_readable(version_t ver = 0) const {
+        if (ver > get_last_committed() ||
+            !paxos.is_readable(0) ||
+            get_last_committed() == 0)
+            return false;
+        return true;
+    }
+
+    /**
+     * Check if we are writeable.
+     *
+     * We consider to be writeable iff:
+     *
+     *  - we are not proposing a new version;
+     *  - we are ready to be written to -- i.e., we have a pending value.
+     *  - paxos is (active or updating or writing or refresh)
+     *
+     * @returns true if writeable; false otherwise
+     */
+    bool is_writeable() const {
+        return is_active() && have_pending;
+    }
+
+    /**
+     * Wait for a proposal to finish.
+     *
+     * Add a callback to be awaken whenever our current proposal finishes being
+     * proposed through Paxos.
+     *
+     * @param c The callback to be awaken once the proposal is finished.
+     */
+    void wait_for_finished_proposal(MonOpRequestRef op, Context *c) {
+        if (op)
+            op->mark_event(service_name + ":wait_for_finished_proposal");
+        waiting_for_finished_proposal.push_back(c);
+    }
+    void wait_for_finished_proposal_ctx(Context *c) {
+        MonOpRequestRef o;
+        wait_for_finished_proposal(o, c);
+    }
+
+    /**
+     * Wait for us to become active
+     *
+     * @param c The callback to be awaken once we become active.
+     */
+    void wait_for_active(MonOpRequestRef op, Context *c) {
+        if (op)
+            op->mark_event(service_name + ":wait_for_active");
+
+        if (!is_proposing()) {
+            smr_protocol.wait_for_active(op, c);
+            return;
+        }
+
+        wait_for_finished_proposal(op, c);
+    }
+    void wait_for_active_ctx(Context *c) {
+        MonOpRequestRef o;
+        wait_for_active(o, c);
+    }
+
+    /**
+     * Wait for us to become readable
+     *
+     * @param c The callback to be awaken once we become active.
+     * @param ver The version we want to wait on.
+     */
+    void wait_for_readable(MonOpRequestRef op, Context *c, version_t ver = 0) {
+        /* This is somewhat of a hack. We only do check if a version is readable on
+         * PaxosService::dispatch(), but, nonetheless, we must make sure that if that
+         * is why we are not readable, then we must wait on PaxosService and not on
+         * Paxos; otherwise, we may assert on Paxos::wait_for_readable() if it
+         * happens to be readable at that specific point in time.
+         */
+        if (op)
+            op->mark_event(service_name + ":wait_for_readable");
+
+        if (is_proposing() ||
+            ver > get_last_committed() ||
+            get_last_committed() == 0)
+            wait_for_finished_proposal(op, c);
+        else {
+            if (op)
+                op->mark_event(service_name + ":wait_for_readable/paxos");
+
+            smr_protocol.wait_for_readable(op, c);
+        }
+    }
+
+    void wait_for_readable_ctx(Context *c, version_t ver = 0) {
+        MonOpRequestRef o; // will initialize the shared_ptr to NULL
+        wait_for_readable(o, c, ver);
+    }
+
+    /**
+     * Wait for us to become writeable
+     *
+     * @param c The callback to be awaken once we become writeable.
+     */
+    void wait_for_writeable(MonOpRequestRef op, Context *c) {
+        if (op)
+            op->mark_event(service_name + ":wait_for_writeable");
+
+        if (is_proposing())
+            wait_for_finished_proposal(op, c);
+        else if (!is_writeable())
+            wait_for_active(op, c);
+        else
+            smr_protocol.wait_for_writeable(op, c);
+    }
+    void wait_for_writeable_ctx(Context *c) {
+        MonOpRequestRef o;
+        wait_for_writeable(o, c);
+    }
+
+
+    /**
+     * @defgroup PaxosService_h_Trim Functions for trimming states
+     * @{
+     */
+    /**
+     * trim service states if appropriate
+     *
+     * Called at same interval as tick()
+     */
+    void maybe_trim();
+
+    /**
+     * Auxiliary function to trim our state from version @p from to version
+     * @p to, not including; i.e., the interval [from, to[
+     *
+     * @param t The transaction to which we will add the trim operations.
+     * @param from the lower limit of the interval to be trimmed
+     * @param to the upper limit of the interval to be trimmed (not including)
+     */
+    void trim(MonitorDBStore::TransactionRef t, version_t from, version_t to);
+
+    /**
+     * encode service-specific extra bits into trim transaction
+     *
+     * @param tx transaction
+     * @param first new first_committed value
+     */
+    virtual void encode_trim_extra(MonitorDBStore::TransactionRef tx,
+                                   version_t first) {}
+
+    /**
+     * Get the version we should trim to.
+     *
+     * Should be overloaded by service if it wants to trim states.
+     *
+     * @returns the version we should trim to; if we return zero, it should be
+     *	      assumed that there's no version to trim to.
+     */
+    virtual version_t get_trim_to() const {
+        return 0;
+    }
+
+    /**
+     * @}
+     */
+
+    /**
+     * Cancel events.
+     *
+     * @note This function is a wrapper for Paxos::cancel_events
+     */
+    void cancel_events() {
+        smr_protocol.cancel_events();
+    }
 
 };
 
