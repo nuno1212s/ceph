@@ -116,19 +116,6 @@ using ceph::timespan_str;
 const string AbstractMonitor::MONITOR_NAME = "monitor";
 const string AbstractMonitor::MONITOR_STORE_PREFIX = "monitor_store";
 
-#undef FLAG
-#undef COMMAND
-#undef COMMAND_WITH_FLAG
-#define FLAG(f) (MonCommand::FLAG_##f)
-#define COMMAND(parsesig, helptext, modulename, req_perms)    \
-  {parsesig, helptext, modulename, req_perms, FLAG(NONE)},
-#define COMMAND_WITH_FLAG(parsesig, helptext, modulename, req_perms, flags) \
-  {parsesig, helptext, modulename, req_perms, flags},
-MonCommand mon_commands[] = {
-#include <mon/MonCommands.h>
-};
-#undef COMMAND
-#undef COMMAND_WITH_FLAG
 
 AbstractMonitor::AbstractMonitor(CephContext *cct_, MonitorDBStore *store, string nm, Messenger *m, Messenger *mgr_m, MonMap *map)
         : Dispatcher(cct_),
@@ -155,15 +142,6 @@ AbstractMonitor::AbstractMonitor(CephContext *cct_, MonitorDBStore *store, strin
           mgr_messenger(mgr_m),
           mgr_client(cct_, mgr_m, monmap),
           gss_ktfile_client(cct->_conf.get_val<std::string>("gss_ktab_client_file")),
-        // scrub
-          scrub_version(0),
-          scrub_event(NULL),
-          scrub_timeout_event(NULL),
-          //timecheck stuff
-          timecheck_round(0),
-          timecheck_acks(0),
-          timecheck_rounds_since_clean(0),
-          timecheck_event(NULL),
           //sessions
           admin_hook(NULL),
           routed_request_tid(0),
@@ -2030,6 +2008,174 @@ void AbstractMonitor::handle_subscribe(MonOpRequestRef op)
                     monmap->get_fsid(), (int)g_conf()->mon_subscribe_interval));
     }
 }
+
+
+void AbstractMonitor::dispatch_op(MonOpRequestRef op)
+{
+    op->mark_event("mon:dispatch_op");
+    MonSession *s = op->get_session();
+    ceph_assert(s);
+    if (s->closed) {
+        dout(10) << " session closed, dropping " << op->get_req() << dendl;
+        return;
+    }
+
+    /* we will consider the default type as being 'monitor' until proven wrong */
+    op->set_type_monitor();
+    /* deal with all messages that do not necessarily need caps */
+    switch (op->get_req()->get_type()) {
+        // auth
+        case MSG_MON_GLOBAL_ID:
+        case CEPH_MSG_AUTH:
+            op->set_type_service();
+            /* no need to check caps here */
+            services[PAXOS_AUTH]->dispatch(op);
+            return;
+
+        case CEPH_MSG_PING:
+            handle_ping(op);
+            return;
+        case MSG_COMMAND:
+            op->set_type_command();
+            handle_tell_command(op);
+            return;
+    }
+
+    if (!op->get_session()->authenticated) {
+        dout(5) << __func__ << " " << op->get_req()->get_source_inst()
+                << " is not authenticated, dropping " << *(op->get_req())
+                << dendl;
+        return;
+    }
+
+    // global_id_status == NONE: all sessions for auth_none and krb,
+    // mon <-> mon sessions (including proxied sessions) for cephx
+    ceph_assert(s->global_id_status == global_id_status_t::NONE ||
+                s->global_id_status == global_id_status_t::NEW_OK ||
+                s->global_id_status == global_id_status_t::NEW_NOT_EXPOSED ||
+                s->global_id_status == global_id_status_t::RECLAIM_OK ||
+                s->global_id_status == global_id_status_t::RECLAIM_INSECURE);
+
+    // let mon_getmap through for "ping" (which doesn't reconnect)
+    // and "tell" (which reconnects but doesn't attempt to preserve
+    // its global_id and stays in NEW_NOT_EXPOSED, retrying until
+    // ->send_attempts reaches 0)
+    if (cct->_conf->auth_expose_insecure_global_id_reclaim &&
+        s->global_id_status == global_id_status_t::NEW_NOT_EXPOSED &&
+        op->get_req()->get_type() != CEPH_MSG_MON_GET_MAP) {
+        dout(5) << __func__ << " " << op->get_req()->get_source_inst()
+                << " may omit old_ticket on reconnects, discarding "
+                << *op->get_req() << " and forcing reconnect" << dendl;
+        ceph_assert(s->con && !s->proxy_con);
+        s->con->mark_down();
+        {
+            std::lock_guard l(session_map_lock);
+            remove_session(s);
+        }
+        op->mark_zap();
+        return;
+    }
+
+    switch (op->get_req()->get_type()) {
+        case CEPH_MSG_MON_GET_MAP:
+            handle_mon_get_map(op);
+            return;
+
+        case MSG_GET_CONFIG:
+            configmon()->handle_get_config(op);
+            return;
+
+        case CEPH_MSG_MON_SUBSCRIBE:
+            /* FIXME: check what's being subscribed, filter accordingly */
+            handle_subscribe(op);
+            return;
+    }
+
+    /* well, maybe the op belongs to a service... */
+    op->set_type_service();
+    /* deal with all messages which caps should be checked somewhere else */
+    switch (op->get_req()->get_type()) {
+
+        // OSDs
+        case CEPH_MSG_MON_GET_OSDMAP:
+        case CEPH_MSG_POOLOP:
+        case MSG_OSD_BEACON:
+        case MSG_OSD_MARK_ME_DOWN:
+        case MSG_OSD_MARK_ME_DEAD:
+        case MSG_OSD_FULL:
+        case MSG_OSD_FAILURE:
+        case MSG_OSD_BOOT:
+        case MSG_OSD_ALIVE:
+        case MSG_OSD_PGTEMP:
+        case MSG_OSD_PG_CREATED:
+        case MSG_REMOVE_SNAPS:
+        case MSG_MON_GET_PURGED_SNAPS:
+        case MSG_OSD_PG_READY_TO_MERGE:
+            services[PAXOS_OSDMAP]->dispatch(op);
+            return;
+
+            // MDSs
+        case MSG_MDS_BEACON:
+        case MSG_MDS_OFFLOAD_TARGETS:
+            services[PAXOS_MDSMAP]->dispatch(op);
+            return;
+
+            // Mgrs
+        case MSG_MGR_BEACON:
+            services[PAXOS_MGR]->dispatch(op);
+            return;
+
+            // MgrStat
+        case MSG_MON_MGR_REPORT:
+        case CEPH_MSG_STATFS:
+        case MSG_GETPOOLSTATS:
+            services[PAXOS_MGRSTAT]->dispatch(op);
+            return;
+
+            // log
+        case MSG_LOG:
+            services[PAXOS_LOG]->dispatch(op);
+            return;
+
+            // handle_command() does its own caps checking
+        case MSG_MON_COMMAND:
+            op->set_type_command();
+            handle_command(op);
+            return;
+    }
+
+    /* nop, looks like it's not a service message; revert back to monitor */
+    op->set_type_monitor();
+
+    /* messages we, the Monitor class, need to deal with
+     * but may be sent by clients. */
+
+    if (!op->get_session()->is_capable("mon", MON_CAP_R)) {
+        dout(5) << __func__ << " " << op->get_req()->get_source_inst()
+                << " not enough caps for " << *(op->get_req()) << " -- dropping"
+                << dendl;
+        return;
+    }
+
+    switch (op->get_req()->get_type()) {
+        // misc
+        case CEPH_MSG_MON_GET_VERSION:
+            handle_get_version(op);
+            return;
+    }
+
+    if (!op->is_src_mon()) {
+        dout(1) << __func__ << " unexpected monitor message from"
+                << " non-monitor entity " << op->get_req()->get_source_inst()
+                << " " << *(op->get_req()) << " -- dropping" << dendl;
+        return;
+    }
+
+    _dispatch_op(op);
+
+    return;
+}
+
 
 void AbstractMonitor::handle_ping(MonOpRequestRef op)
 {

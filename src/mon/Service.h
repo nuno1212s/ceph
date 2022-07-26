@@ -157,6 +157,7 @@ protected:
      * @}
      */
 
+public:
     /**
      *
      * @param mon
@@ -295,8 +296,8 @@ public:
     bool dispatch(MonOpRequestRef op);
 
     void refresh(bool *need_bootstrap);
-    void post_refresh();
 
+    void post_refresh();
 
     /**
      * @defgroup PaxosService_h_override_funcs Functions that should be
@@ -315,18 +316,18 @@ public:
     virtual void create_initial() = 0;
 
     /**
-     * Query the Paxos system for the latest state and apply it if it's newer
+     * Query the SMR system for the latest state and apply it if it's newer
      * than the current Monitor state.
      */
-    virtual void update_from_paxos(bool *need_bootstrap) = 0;
+    virtual void update_from_smr(bool *need_bootstrap) = 0;
 
     /**
-     * Hook called after all services have refreshed their state from paxos
+     * Hook called after all services have refreshed their state from smr service
      *
      * This is useful for doing any update work that depends on other
      * service's having up-to-date state.
      */
-    virtual void post_paxos_update() {}
+    virtual void post_smr_update() {}
 
     /**
      * Init on startup

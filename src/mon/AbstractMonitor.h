@@ -409,6 +409,9 @@ protected:
     }
 
     void dispatch_op(MonOpRequestRef op);
+
+    virtual void _dispatch_op(MonOpRequestRef op) = 0;
+
     //mon_caps is used for un-connected messages from monitors
     MonCap mon_caps;
     bool get_authorizer(int dest_type, AuthAuthorizer **authorizer);

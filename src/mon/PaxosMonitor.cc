@@ -311,6 +311,149 @@ struct CMonGoRecovery : public Context {
     }
 };
 
+void PaxosMonitor::go_recovery_stretch_mode()
+{
+    dout(20) << __func__ << dendl;
+    if (!is_leader()) return;
+    if (!is_degraded_stretch_mode()) return;
+    if (is_recovering_stretch_mode()) return;
+
+    if (dead_mon_buckets.size()) {
+        ceph_assert( 0 == "how did we try and do stretch recovery while we have dead monitor buckets?");
+        // we can't recover if we are missing monitors in a zone!
+        return;
+    }
+
+    if (!osdmon()->is_readable()) {
+        osdmon()->wait_for_readable_ctx(new CMonGoRecovery(this));
+        return;
+    }
+
+    if (!osdmon()->is_writeable()) {
+        osdmon()->wait_for_writeable_ctx(new CMonGoRecovery(this));
+    }
+    osdmon()->trigger_recovery_stretch_mode();
+}
+
+void PaxosMonitor::set_recovery_stretch_mode()
+{
+    degraded_stretch_mode = true;
+    recovering_stretch_mode = true;
+    osdmon()->set_recovery_stretch_mode();
+}
+
+void PaxosMonitor::try_engage_stretch_mode()
+{
+    dout(20) << __func__ << dendl;
+    if (stretch_mode_engaged) return;
+    if (!osdmon()->is_readable()) {
+        osdmon()->wait_for_readable_ctx(new CMonEnableStretchMode(this));
+    }
+    if (osdmon()->osdmap.stretch_mode_enabled &&
+        monmap->stretch_mode_enabled) {
+        dout(10) << "Engaging stretch mode!" << dendl;
+        stretch_mode_engaged = true;
+        int32_t stretch_divider_id = osdmon()->osdmap.stretch_mode_bucket;
+        stretch_bucket_divider = osdmon()->osdmap.
+                crush->get_type_name(stretch_divider_id);
+        disconnect_disallowed_stretch_sessions();
+    }
+}
+
+void PaxosMonitor::maybe_go_degraded_stretch_mode()
+{
+    dout(20) << __func__ << dendl;
+    if (is_degraded_stretch_mode()) return;
+    if (!is_leader()) return;
+    if (dead_mon_buckets.empty()) return;
+    if (!osdmon()->is_readable()) {
+        osdmon()->wait_for_readable_ctx(new CMonGoDegraded(this));
+        return;
+    }
+    ceph_assert(monmap->contains(monmap->tiebreaker_mon));
+    // filter out the tiebreaker zone and check if remaining sites are down by OSDs too
+    const auto &mi = monmap->mon_info[monmap->tiebreaker_mon];
+    auto ci = mi.crush_loc.find(stretch_bucket_divider);
+    map<string, set<string>> filtered_dead_buckets = dead_mon_buckets;
+    filtered_dead_buckets.erase(ci->second);
+
+    set<int> matched_down_buckets;
+    set<string> matched_down_mons;
+    bool dead = osdmon()->check_for_dead_crush_zones(filtered_dead_buckets,
+                                                     &matched_down_buckets,
+                                                     &matched_down_mons);
+    if (dead) {
+        if (!osdmon()->is_writeable()) {
+            osdmon()->wait_for_writeable_ctx(new CMonGoDegraded(this));
+        }
+        if (!monmon()->is_writeable()) {
+            monmon()->wait_for_writeable_ctx(new CMonGoDegraded(this));
+        }
+        trigger_degraded_stretch_mode(matched_down_mons, matched_down_buckets);
+    }
+}
+
+void PaxosMonitor::trigger_degraded_stretch_mode(const set<string>& dead_mons,
+                                            const set<int>& dead_buckets)
+{
+    dout(20) << __func__ << dendl;
+    ceph_assert(osdmon()->is_writeable());
+    ceph_assert(monmon()->is_writeable());
+
+    // figure out which OSD zone(s) remains alive by removing
+    // tiebreaker mon from up_mon_buckets
+    set<string> live_zones = up_mon_buckets;
+    ceph_assert(monmap->contains(monmap->tiebreaker_mon));
+    const auto &mi = monmap->mon_info[monmap->tiebreaker_mon];
+    auto ci = mi.crush_loc.find(stretch_bucket_divider);
+    live_zones.erase(ci->second);
+    ceph_assert(live_zones.size() == 1); // only support 2 zones right now
+
+    osdmon()->trigger_degraded_stretch_mode(dead_buckets, live_zones);
+    monmon()->trigger_degraded_stretch_mode(dead_mons);
+    set_degraded_stretch_mode();
+}
+
+void PaxosMonitor::set_degraded_stretch_mode()
+{
+    degraded_stretch_mode = true;
+    recovering_stretch_mode = false;
+    osdmon()->set_degraded_stretch_mode();
+}
+
+struct CMonGoHealthy : public Context {
+    PaxosMonitor *m;
+    CMonGoHealthy(PaxosMonitor *mon) : m(mon) {}
+    void finish(int r) {
+        m->trigger_healthy_stretch_mode();
+    }
+};
+
+
+void PaxosMonitor::trigger_healthy_stretch_mode()
+{
+    dout(20) << __func__ << dendl;
+    if (!is_degraded_stretch_mode()) return;
+    if (!is_leader()) return;
+    if (!osdmon()->is_writeable()) {
+        osdmon()->wait_for_writeable_ctx(new CMonGoHealthy(this));
+    }
+    if (!monmon()->is_writeable()) {
+        monmon()->wait_for_writeable_ctx(new CMonGoHealthy(this));
+    }
+
+    ceph_assert(osdmon()->osdmap.recovering_stretch_mode);
+    osdmon()->trigger_healthy_stretch_mode();
+    monmon()->trigger_healthy_stretch_mode();
+}
+
+void PaxosMonitor::set_healthy_stretch_mode()
+{
+    degraded_stretch_mode = false;
+    recovering_stretch_mode = false;
+    osdmon()->set_healthy_stretch_mode();
+}
+
 bool PaxosMonitor::session_stretch_allowed(MonSession *s, MonOpRequestRef& op)
 {
     if (!is_stretch_mode()) return true;
@@ -1068,6 +1211,111 @@ void PaxosMonitor::waitlist_or_zap_client(MonOpRequestRef op) {
     }
 }
 
+void PaxosMonitor::_dispatch_op(MonOpRequestRef op) {
+    /* messages that should only be sent by another monitor */
+    switch (op->get_req()->get_type()) {
+
+        case MSG_ROUTE:
+            handle_route(op);
+            return;
+
+        case MSG_MON_PROBE:
+            handle_probe(op);
+            return;
+
+            // Sync (i.e., the new slurp, but on steroids)
+        case MSG_MON_SYNC:
+            handle_sync(op);
+            return;
+        case MSG_MON_SCRUB:
+            handle_scrub(op);
+            return;
+
+            /* log acks are sent from a monitor we sent the MLog to, and are
+               never sent by clients to us. */
+        case MSG_LOGACK:
+            log_client.handle_log_ack((MLogAck*)op->get_req());
+            return;
+
+            // monmap
+        case MSG_MON_JOIN:
+            op->set_type_service();
+            services[PAXOS_MONMAP]->dispatch(op);
+            return;
+
+            // paxos
+        case MSG_MON_PAXOS:
+        {
+            op->set_type_paxos();
+            auto pm = op->get_req<MMonPaxos>();
+            if (!op->get_session()->is_capable("mon", MON_CAP_X)) {
+                //can't send these!
+                return;
+            }
+
+            if (state == STATE_SYNCHRONIZING) {
+                // we are synchronizing. These messages would do us no
+                // good, thus just drop them and ignore them.
+                dout(10) << __func__ << " ignore paxos msg from "
+                         << pm->get_source_inst() << dendl;
+                return;
+            }
+
+            // sanitize
+            if (pm->epoch > get_epoch()) {
+                bootstrap();
+                return;
+            }
+            if (pm->epoch != get_epoch()) {
+                return;
+            }
+
+            paxos->dispatch(op);
+        }
+            return;
+
+            // elector messages
+        case MSG_MON_ELECTION:
+            op->set_type_election_or_ping();
+            //check privileges here for simplicity
+            if (!op->get_session()->is_capable("mon", MON_CAP_X)) {
+                dout(0) << "MMonElection received from entity without enough caps!"
+                        << op->get_session()->caps << dendl;
+                return;;
+            }
+            if (!is_probing() && !is_synchronizing()) {
+                elector.dispatch(op);
+            }
+            return;
+
+        case MSG_MON_PING:
+            op->set_type_election_or_ping();
+            elector.dispatch(op);
+            return;
+
+        case MSG_FORWARD:
+            handle_forward(op);
+            return;
+
+        case MSG_TIMECHECK:
+            dout(5) << __func__ << " ignoring " << op << dendl;
+            return;
+        case MSG_TIMECHECK2:
+            handle_timecheck(op);
+            return;
+
+        case MSG_MON_HEALTH:
+            dout(5) << __func__ << " dropping deprecated message: "
+                    << *op->get_req() << dendl;
+            break;
+        case MSG_MON_HEALTH_CHECKS:
+            op->set_type_service();
+            services[PAXOS_HEALTH]->dispatch(op);
+            return;
+    }
+    dout(1) << "dropping unexpected " << *(op->get_req()) << dendl;
+}
+
 void PaxosMonitor::_ms_dispatch(Message *m) {
     if (is_shutdown()) {
         m->put();
@@ -1776,6 +2024,19 @@ void PaxosMonitor::sync_obtain_latest_monmap(bufferlist &bl)
     dout(1) << __func__ << " obtained monmap e" << latest_monmap.epoch << dendl;
 
     latest_monmap.encode(bl, CEPH_FEATURES_ALL);
+}
+
+void PaxosMonitor::sync_force(Formatter *f)
+{
+    auto tx(std::make_shared<MonitorDBStore::Transaction>());
+    sync_stash_critical_state(tx);
+    tx->put("mon_sync", "force_sync", 1);
+    store->apply_transaction(tx);
+
+    f->open_object_section("sync_force");
+    f->dump_int("ret", 0);
+    f->dump_stream("msg") << "forcing store sync the next time the monitor starts";
+    f->close_section(); // sync_force
 }
 
 void PaxosMonitor::sync_reset_requester()
@@ -3052,12 +3313,48 @@ bool PaxosMonitor::_add_bootstrap_peer_hint(std::string_view cmd,
     return true;
 }
 
+void PaxosMonitor::format_command_descriptions(const std::vector<MonCommand> &commands,
+                                          Formatter *f,
+                                          uint64_t features,
+                                          bufferlist *rdata)
+{
+    int cmdnum = 0;
+    f->open_object_section("command_descriptions");
+    for (const auto &cmd : commands) {
+        unsigned flags = cmd.flags;
+        ostringstream secname;
+        secname << "cmd" << setfill('0') << std::setw(3) << cmdnum;
+        dump_cmddesc_to_json(f, features, secname.str(),
+                             cmd.cmdstring, cmd.helpstring, cmd.module,
+                             cmd.req_perms, flags);
+        cmdnum++;
+    }
+    f->close_section();	// command_descriptions
+
+    f->flush(*rdata);
+}
+
+#undef FLAG
+#undef COMMAND
+#undef COMMAND_WITH_FLAG
+#define FLAG(f) (MonCommand::FLAG_##f)
+#define COMMAND(parsesig, helptext, modulename, req_perms)    \
+  {parsesig, helptext, modulename, req_perms, FLAG(NONE)},
+#define COMMAND_WITH_FLAG(parsesig, helptext, modulename, req_perms, flags) \
+  {parsesig, helptext, modulename, req_perms, flags},
+MonCommand mon_commands[] = {
+#include <mon/MonCommands.h>
+};
+#undef COMMAND
+#undef COMMAND_WITH_FLAG
+
 PaxosMonitor::PaxosMonitor(CephContext *cct_, MonitorDBStore *store, std::string nm, Messenger *m, Messenger *mgr_m,
                            MonMap *map)
         : AbstractMonitor(cct_, store, nm, m, mgr_m, map),
           elector(this, map->strategy),
           required_features(0),
           leader(0),
+          has_ever_joined(false),
           // sync state
           sync_provider_count(0),
           sync_cookie(0),
@@ -3071,4 +3368,43 @@ PaxosMonitor::PaxosMonitor(CephContext *cct_, MonitorDBStore *store, std::string
           scrub_timeout_event(NULL)
 {
 
+    paxos = std::make_unique<PaxosSMR>(*this, "paxos");
+
+    services[PAXOS_MDSMAP].reset(new MDSMonitor(*this, *paxos, "mdsmap"));
+    services[PAXOS_MONMAP].reset(new MonmapMonitor(*this, *paxos, "monmap"));
+    services[PAXOS_OSDMAP].reset(new OSDMonitor(cct, *this, *paxos, "osdmap"));
+    services[PAXOS_LOG].reset(new LogMonitor(*this, *paxos, "logm"));
+    services[PAXOS_AUTH].reset(new AuthMonitor(*this, *paxos, "auth"));
+    services[PAXOS_MGR].reset(new MgrMonitor(*this, *paxos, "mgr"));
+    services[PAXOS_MGRSTAT].reset(new MgrStatMonitor(*this, *paxos, "mgrstat"));
+    services[PAXOS_HEALTH].reset(new HealthMonitor(*this, *paxos, "health"));
+    services[PAXOS_CONFIG].reset(new ConfigMonitor(*this, *paxos, "config"));
+    services[PAXOS_KV].reset(new KVMonitor(*this, *paxos, "kv"));
+
+    exited_quorum = ceph_clock_now();
+
+    // prepare local commands
+    local_mon_commands.resize(std::size(mon_commands));
+    for (unsigned i = 0; i < std::size(mon_commands); ++i) {
+        local_mon_commands[i] = mon_commands[i];
+    }
+
+    MonCommand::encode_vector(local_mon_commands, local_mon_commands_bl);
+
+    prenautilus_local_mon_commands = local_mon_commands;
+    for (auto& i : prenautilus_local_mon_commands) {
+        std::string n = cmddesc_get_prenautilus_compat(i.cmdstring);
+        if (n != i.cmdstring) {
+            dout(20) << " pre-nautilus cmd " << i.cmdstring << " -> " << n << dendl;
+            i.cmdstring = n;
+        }
+    }
+
+    MonCommand::encode_vector(prenautilus_local_mon_commands, prenautilus_local_mon_commands_bl);
+
+    // assume our commands until we have an election.  this only means
+    // we won't reply with EINVAL before the election; any command that
+    // actually matters will wait until we have quorum etc and then
+    // retry (and revalidate).
+    leader_mon_commands = local_mon_commands;
 }

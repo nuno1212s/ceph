@@ -102,6 +102,14 @@ public:
     }
 
     /**
+     * Queue a completion for the pending proposal
+     *
+     * This completion will get triggered when the pending proposal
+     * transaction commits.
+     */
+    virtual void queue_pending_finisher(Context *onfinished) = 0;
+
+    /**
      * Read and prepare the given transaction
      */
     virtual void read_and_prepare_transactions(MonitorDBStore::TransactionRef tx,

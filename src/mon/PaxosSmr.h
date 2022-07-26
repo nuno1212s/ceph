@@ -443,7 +443,6 @@ public:
     std::list<std::string> extra_state_dirs;
 
 public:
-
     PaxosSMR(PaxosMonitor &mon, const std::string &name)
             : mon(mon),
               logger(NULL),

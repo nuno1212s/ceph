@@ -5,6 +5,19 @@
 #include "Elector.h"
 #include "PaxosSmr.h"
 
+enum {
+    l_mon_first = 456000,
+    l_mon_num_sessions,
+    l_mon_session_add,
+    l_mon_session_rm,
+    l_mon_session_trim,
+    l_mon_num_elections,
+    l_mon_election_call,
+    l_mon_election_win,
+    l_mon_election_lose,
+    l_mon_last,
+};
+
 class PaxosMonitor : public AbstractMonitor {
     // -- monitor state --
 private:
@@ -162,6 +175,7 @@ public:
     void set_recovery_stretch_mode();
     void trigger_healthy_stretch_mode();
     void set_healthy_stretch_mode();
+    //This is also not implemented in regular ceph
     void enable_stretch_mode();
     void set_mon_crush_location(const std::string& loc);
 
@@ -271,7 +285,6 @@ public:
      */
     void sync_start(entity_addrvec_t &addrs, bool full);
 
-public:
     /**
      * force a sync on next mon restart
      */
@@ -537,6 +550,8 @@ public:
 
 
 public:
+
+    void _dispatch_op(MonOpRequestRef op) override;
 
 public:
     static void format_command_descriptions(const std::vector<MonCommand> &commands,

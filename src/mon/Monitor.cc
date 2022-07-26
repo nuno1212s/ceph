@@ -6632,6 +6632,7 @@ struct CMonEnableStretchMode : public Context {
     m->try_engage_stretch_mode();
   }
 };
+
 void Monitor::try_engage_stretch_mode()
 {
   dout(20) << __func__ << dendl;

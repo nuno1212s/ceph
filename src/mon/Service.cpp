@@ -1,8 +1,7 @@
 #include "Service.h"
 
 
-void Service::load_health()
-{
+void Service::load_health() {
     bufferlist bl;
     mon.store->get("health", service_name, bl);
     if (bl.length()) {
@@ -12,24 +11,200 @@ void Service::load_health()
     }
 }
 
-bool Service::should_propose(double& delay)
+void Service::_active()
 {
+    if (is_proposing()) {
+        dout(10) << __func__ << " - proposing" << dendl;
+        return;
+    }
+    if (!is_active()) {
+        dout(10) << __func__ << " - not active" << dendl;
+        /**
+         * Callback used to make sure we call the PaxosService::_active function
+         * whenever a condition is fulfilled.
+         *
+         * This is used in multiple situations, from waiting for the Paxos to commit
+         * our proposed value, to waiting for the Paxos to become active once an
+         * election is finished.
+         */
+        class C_Active : public Context {
+            Service *svc;
+        public:
+            explicit C_Active(Service *s) : svc(s) {}
+
+            void finish(int r) override {
+                if (r >= 0)
+                    svc->_active();
+            }
+        };
+
+        wait_for_active_ctx(new C_Active(this));
+        return;
+    }
+    dout(10) << __func__ << dendl;
+
+    // create pending state?
+    if (mon.is_leader()) {
+        dout(7) << __func__ << " creating new pending" << dendl;
+        if (!have_pending) {
+            create_pending();
+            have_pending = true;
+        }
+
+        if (get_last_committed() == 0) {
+            // create initial state
+            create_initial();
+            propose_pending();
+            return;
+        }
+    } else {
+        dout(7) << __func__ << " we are not the leader, hence we propose nothing!" << dendl;
+    }
+
+    // wake up anyone who came in while we were proposing.  note that
+    // anyone waiting for the previous proposal to commit is no longer
+    // on this list; it is on Paxos's.
+    finish_contexts(g_ceph_context, waiting_for_finished_proposal, 0);
+
+    if (mon.is_leader())
+        upgrade_format();
+
+    // NOTE: it's possible that this will get called twice if we commit
+    // an old paxos value.  Implementations should be mindful of that.
+    on_active();
+}
+
+void Service::propose_pending()
+{
+    dout(10) << __func__ << dendl;
+    ceph_assert(have_pending);
+    ceph_assert(!proposing);
+    //TODO: Fix this?
+    ceph_assert(mon.is_leader());
+    ceph_assert(is_active());
+
+    if (proposal_timer) {
+        dout(10) << " canceling proposal_timer " << proposal_timer << dendl;
+        mon.timer.cancel_event(proposal_timer);
+        proposal_timer = NULL;
+    }
+
+    /**
+     * @note What we contribute to the pending Paxos transaction is
+     *	   obtained by calling a function that must be implemented by
+     *	   the class implementing us.  I.e., the function
+     *	   encode_pending will be the one responsible to encode
+     *	   whatever is pending on the implementation class into a
+     *	   bufferlist, so we can then propose that as a value through
+     *	   Paxos.
+     */
+    MonitorDBStore::TransactionRef t = smr_protocol.get_pending_transaction();
+
+    if (should_stash_full())
+        encode_full(t);
+
+    encode_pending(t);
+    have_pending = false;
+
+    if (format_version > 0) {
+        t->put(get_service_name(), "format_version", format_version);
+    }
+
+    // apply to paxos
+    proposing = true;
+    /**
+     * Callback class used to mark us as active once a proposal finishes going
+     * through Paxos.
+     *
+     * We should wake people up *only* *after* we inform the service we
+     * just went active. And we should wake people up only once we finish
+     * going active. This is why we first go active, avoiding to wake up the
+     * wrong people at the wrong time, such as waking up a C_RetryMessage
+     * before waking up a C_Active, thus ending up without a pending value.
+     */
+    class C_Committed : public Context {
+        Service *ps;
+    public:
+        explicit C_Committed(Service *p) : ps(p) { }
+        void finish(int r) override {
+            ps->proposing = false;
+            if (r >= 0)
+                ps->_active();
+            else if (r == -ECANCELED || r == -EAGAIN)
+                return;
+            else
+                ceph_abort_msg("bad return value for C_Committed");
+        }
+    };
+
+    smr_protocol.queue_pending_finisher(new C_Committed(this));
+    smr_protocol.trigger_propose();
+}
+
+bool Service::should_propose(double &delay) {
     // simple default policy: quick startup, then some damping.
     if (get_last_committed() <= 1) {
         delay = 0.0;
     } else {
         utime_t now = ceph_clock_now();
         if ((now - paxos.last_commit_time) > g_conf()->paxos_propose_interval)
-            delay = (double)g_conf()->paxos_min_wait;
+            delay = (double) g_conf()->paxos_min_wait;
         else
-            delay = (double)(g_conf()->paxos_propose_interval + paxos.last_commit_time
-                             - now);
+            delay = (double) (g_conf()->paxos_propose_interval + paxos.last_commit_time
+                              - now);
     }
     return true;
 }
 
-bool Service::dispatch(MonOpRequestRef op)
+
+
+void Service::election_finished()
 {
+    dout(10) << __func__ << dendl;
+
+    finish_contexts(g_ceph_context, waiting_for_finished_proposal, -EAGAIN);
+
+    // make sure we update our state
+    _active();
+}
+
+
+void Service::shutdown() {
+    cancel_events();
+
+    if (proposal_timer) {
+        dout(10) << " canceling proposal_timer " << proposal_timer << dendl;
+        mon.timer.cancel_event(proposal_timer);
+        proposal_timer = 0;
+    }
+
+    finish_contexts(g_ceph_context, waiting_for_finished_proposal, -EAGAIN);
+
+    on_shutdown();
+}
+
+void Service::restart()
+{
+    dout(10) << __func__ << dendl;
+    if (proposal_timer) {
+        dout(10) << " canceling proposal_timer " << proposal_timer << dendl;
+        mon.timer.cancel_event(proposal_timer);
+        proposal_timer = 0;
+    }
+
+    finish_contexts(g_ceph_context, waiting_for_finished_proposal, -EAGAIN);
+
+    if (have_pending) {
+        discard_pending();
+        have_pending = false;
+    }
+
+    proposing = false;
+
+    on_restart();
+}
+
+bool Service::dispatch(MonOpRequestRef op) {
     ceph_assert(op->is_type_service() || op->is_type_command());
     auto m = op->get_req<PaxosServiceMessage>();
     op->mark_event("psvc:dispatch");
@@ -137,9 +312,7 @@ bool Service::dispatch(MonOpRequestRef op)
     return true;
 }
 
-
-void Service::maybe_trim()
-{
+void Service::maybe_trim() {
     if (!is_writeable())
         return;
 
@@ -196,9 +369,39 @@ void Service::maybe_trim()
     smr_protocol.trigger_propose();
 }
 
-void Service::trim(MonitorDBStore::TransactionRef t,
-                        version_t from, version_t to)
+void Service::refresh(bool *need_bootstrap) {
+    // update cached versions
+    cached_first_committed = get_value(first_committed_name);
+    cached_last_committed = get_value(last_committed_name);
+
+    version_t new_format = get_value("format_version");
+    if (new_format != format_version) {
+        dout(1) << __func__ << " upgraded, format " << format_version << " -> " << new_format << dendl;
+        on_upgrade();
+    }
+    format_version = new_format;
+
+    dout(10) << __func__ << dendl;
+
+    update_from_smr(need_bootstrap);
+}
+
+void Service::post_refresh()
 {
+    dout(10) << __func__ << dendl;
+
+    post_smr_update();
+
+    //TODO: Fix this
+    /*
+    if (mon.is_peon() && !waiting_for_finished_proposal.empty()) {
+        finish_contexts(g_ceph_context, waiting_for_finished_proposal, -EAGAIN);
+    }
+     */
+}
+
+void Service::trim(MonitorDBStore::TransactionRef t,
+                   version_t from, version_t to) {
     dout(10) << __func__ << " from " << from << " to " << to << dendl;
     ceph_assert(from != to);
 
