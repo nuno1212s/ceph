@@ -469,10 +469,6 @@ public:
 
     void init() override;
 
-    void leader_init();
-
-    void peon_init();
-
     /**
      * Check if we are recovering.
      *
@@ -504,7 +500,7 @@ public:
     bool is_writing() const override { return state == STATE_WRITING; }
 
     /// @return 'true' if we are writing an update-previous to disk
-    bool is_writing_previous() const { return state == STATE_WRITING_PREVIOUS; }
+    bool is_writing_previous() const override { return state == STATE_WRITING_PREVIOUS; }
 
     /// @return 'true' if we are refreshing an update just committed
     bool is_refresh() const { return state == STATE_REFRESH; }
@@ -534,8 +530,6 @@ public:
         waiting_for_writeable.push_back(c);
     }
 
-    bool is_writing_previous() override;
-
     void read_and_prepare_transactions(MonitorDBStore::TransactionRef tx, version_t first, version_t last) override;
 
     void dispatch(MonOpRequestRef op) override;
@@ -554,6 +548,16 @@ public:
 
     void shutdown() override;
 
+
+    /**
+    * Read key @e key and store its value in @e bl
+    *
+    * @param[in] key The key we want to read
+    * @param[out] bl The version's value
+    * @return 'true' if we successfully read the value; 'false' otherwise
+    */
+    bool read(const std::string &key, ceph::buffer::list &bl) override;
+
     /**
      * Read version @e v and store its value in @e bl
      *
@@ -571,6 +575,37 @@ public:
      *	     or 0 (zero) otherwise.
      */
     version_t read_current(buffer::list &bl) override;
+
+    /**
+     * Read a value for a service / key combination
+     *
+     * @param[in] service_name The name of the service
+     * @param[in] key The key that we want to retrieve
+     * @param[out] bl Where to put the result
+     * @return 'true' if we successfully read the value; 'false' otherwise
+     */
+    int read_version_from_service(const std::string &service_name, const std::string &key, buffer::list &bl) override;
+
+    /**
+     * Read a value for a service / version combination
+     *
+     * @param[in] service_name The name of the service
+     * @param[in] v The key that we want to retrieve
+     * @param[out] bl Where to put the result
+     * @return 'true' if we successfully read the value; 'false' otherwise
+     */
+    int read_version_from_service(const std::string &service_name, version_t v, buffer::list &bl) override;
+
+    /**
+     * Get the latest version number for the given service and key
+     *
+     * @param service_name
+     * @param bl
+     * @return
+     */
+    version_t read_current_from_service(const std::string &service_name,
+                                        const std::string &key) override;
+
 
     MonitorDBStore::TransactionRef get_pending_transaction() override;
 
@@ -1037,15 +1072,10 @@ private:
      *
      * @param c A callback
      */
-    void wait_for_active(MonOpRequestRef op, Context *c) {
+    void wait_for_active(MonOpRequestRef op, Context *c) override {
         if (op)
             op->mark_event("paxos:wait_for_active");
         waiting_for_active.push_back(c);
-    }
-
-    void wait_for_active(Context *c) {
-        MonOpRequestRef o;
-        wait_for_active(o, c);
     }
 
     /**
@@ -1125,7 +1155,7 @@ private:
      * is not active (e.g., because it is already in the midst of committing
      * something) that will be deferred (e.g., until the current round finishes).
      */
-    bool trigger_propose();
+    bool trigger_propose() override;
     /**
      * @}
      */

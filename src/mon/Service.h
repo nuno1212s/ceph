@@ -37,7 +37,7 @@ public:
     bool need_immediate_propose = false;
 
     /**
-     * @defgroup PaxosService_h_store_keys Set of keys that are usually used on
+     * @defgroup Service_h_store_keys Set of keys that are usually used on
      *					 all the services implementing this
      *					 class, and, being almost the only keys
      *					 used, should be standardized to avoid
@@ -235,18 +235,20 @@ public:
     void shutdown();
 
     /**
-     * Propose a new value through Paxos.
+     * Propose a new value through the SMR.
      *
      * This function should be called by the classes implementing
-     * PaxosService, in order to propose a new value through Paxos.
+     * Service, in order to propose a new value through the SMR algorithm.
      *
      * @pre The implementation class implements the encode_pending function.
      * @pre have_pending is true
+     * - If this is paxos:
      * @pre Our monitor is the Leader
      * @pre Paxos is active
+     * - If not those two clauses are not necessary
      * @post Cancel the proposal timer, if any
      * @post have_pending is false
-     * @post propose pending value through Paxos
+     * @post propose pending value through SMR
      *
      * @note This function depends on the implementation of encode_pending on
      *	   the class that is implementing PaxosService
@@ -397,7 +399,7 @@ public:
      *		       spamming.
      * @returns 'true' if the Paxos system should propose; 'false' otherwise.
      */
-    virtual bool should_propose(double &delay);
+    bool should_propose(double &delay);
 
     /**
      * force an immediate propose.
@@ -409,14 +411,14 @@ public:
     }
 
     /**
-     * @defgroup PaxosService_h_courtesy Courtesy functions
+     * @defgroup Service_h_courtesy Courtesy functions
      *
      * Courtesy functions, in case the class implementing this service has
      * anything it wants/needs to do at these times.
      * @{
      */
     /**
-     * This is called when the Paxos state goes to active.
+     * This is called when the SMR state goes to active.
      *
      * On the peon, this is after each election.
      * On the leader, this is after each election, *and* after each completed
@@ -611,8 +613,7 @@ public:
      * @return 0 on success; <0 otherwise
      */
     virtual int get_version(version_t ver, ceph::buffer::list &bl) {
-        //TODO: Fix this
-        return mon.store->get(get_service_name(), ver, bl);
+        return smr_protocol.read_version_from_service(get_service_name(), ver, bl);
     }
 
     /**
@@ -623,9 +624,9 @@ public:
      * @returns 0 on success; <0 otherwise
      */
     virtual int get_version_full(version_t ver, ceph::buffer::list &bl) {
-        //TODO: Fix this
-        std::string key = mon.store->combine_strings(full_prefix_name, ver);
-        return mon.store->get(get_service_name(), key, bl);
+        std::string key = smr_protocol.combine_strings(full_prefix_name, ver);
+
+        return smr_protocol.read_version_from_service(get_service_name(), key, bl);
     }
 
     /**
@@ -634,9 +635,9 @@ public:
      * @returns A version number
      */
     version_t get_version_latest_full() {
-        //TODO: Fix this
-        std::string key = mon.store->combine_strings(full_prefix_name, full_latest_name);
-        return mon.store->get(get_service_name(), key);
+        std::string key = smr_protocol.combine_strings(full_prefix_name, full_latest_name);
+
+        return smr_protocol.read_current_from_service(get_service_name(), key);
     }
 
     /**
@@ -646,8 +647,7 @@ public:
      * @param[out] bl The ceph::buffer::list to be populated with the value
      */
     int get_value(const std::string &key, ceph::buffer::list &bl) {
-        //TODO: Fix this
-        return mon.store->get(get_service_name(), key, bl);
+        return smr_protocol.read_version_from_service(get_service_name(), key, bl);
     }
 
     /**
@@ -656,10 +656,7 @@ public:
      * @param[in] key The key
      */
     version_t get_value(const std::string &key) {
-        //TODO: Fix this (Read from SMR)
-
-
-        return mon.store->get(get_service_name(), key);
+        return smr_protocol.read_current_from_service(get_service_name(), key);
     }
 
     /**
@@ -672,11 +669,11 @@ public:
 public:
 
     /**
-     * Check if we are proposing a value through Paxos
+     * Check if we are proposing a value through the SMR algorithm
      *
      * @returns true if we are proposing; false otherwise.
      */
-    bool is_proposing() const {
+    virtual bool is_proposing() const {
         return proposing;
     }
 
@@ -707,7 +704,7 @@ public:
      */
     bool is_readable(version_t ver = 0) const {
         if (ver > get_last_committed() ||
-            !paxos.is_readable(0) ||
+            !smr_protocol.is_readable(0) ||
             get_last_committed() == 0)
             return false;
         return true;
@@ -791,7 +788,7 @@ public:
             if (op)
                 op->mark_event(service_name + ":wait_for_readable/paxos");
 
-            smr_protocol.wait_for_readable(op, c);
+            smr_protocol.wait_for_readable(op, c, ver);
         }
     }
 

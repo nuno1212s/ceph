@@ -32,6 +32,7 @@
 #include "mon/MonOpRequest.h"
 #include "common/WorkQueue.h"
 #include "common/admin_socket.h"
+#include "Service.h"
 
 enum {
     l_cluster_first = 555000,
@@ -88,7 +89,7 @@ public:
      * We still use a monitor DB store, but only for some of the needed
      * Features of a monitor.
      * In the case of Paxos, this will still be used as before, but with febft
-     * This store will not be used for the SMR protocol, as febft has it's own way of doing things
+     * This store will not be used for the SMR protocol, as febft has it's own way of storing things
      */
     MonitorDBStore *store;
     MonMap *monmap;
@@ -100,6 +101,7 @@ public:
     bool cluster_logger_registered;
 
     void register_cluster_logger();
+    void update_logger();
     void unregister_cluster_logger();
 
     LogClient log_client;
@@ -117,84 +119,6 @@ public:
     MgrClient mgr_client;
     uint64_t mgr_proxy_bytes = 0;  // in-flight proxied mgr command message bytes
     std::string gss_ktfile_client{};
-
-
-    /**
-     * @defgroup Monitor_h_TimeCheck Monitor Clock Drift Early Warning System
-     * @{
-     *
-     * We use time checks to keep track of any clock drifting going on in the
-     * cluster. This is accomplished by periodically ping each monitor in the
-     * quorum and register its response time on a map, assessing how much its
-     * clock has drifted. We also take this opportunity to assess the latency
-     * on response.
-     *
-     * This mechanism works as follows:
-     *
-     *  - Leader sends out a 'PING' message to each other monitor in the quorum.
-     *    The message is timestamped with the leader's current time. The leader's
-     *    current time is recorded in a map, associated with each peon's
-     *    instance.
-     *  - The peon replies to the leader with a timestamped 'PONG' message.
-     *  - The leader calculates a delta between the peon's timestamp and its
-     *    current time and stashes it.
-     *  - The leader also calculates the time it took to receive the 'PONG'
-     *    since the 'PING' was sent, and stashes an approximate latency estimate.
-     *  - Once all the quorum members have pong'ed, the leader will share the
-     *    clock skew and latency maps with all the monitors in the quorum.
-     */
-    std::map<int, utime_t> timecheck_waiting;
-    std::map<int, double> timecheck_skews;
-    std::map<int, double> timecheck_latencies;
-    // odd value means we are mid-round; even value means the round has
-    // finished.
-    version_t timecheck_round;
-    unsigned int timecheck_acks;
-    utime_t timecheck_round_start;
-    friend class HealthMonitor;
-    /* When we hit a skew we will start a new round based off of
-     * 'mon_timecheck_skew_interval'. Each new round will be backed off
-     * until we hit 'mon_timecheck_interval' -- which is the typical
-     * interval when not in the presence of a skew.
-     *
-     * This variable tracks the number of rounds with skews since last clean
-     * so that we can report to the user and properly adjust the backoff.
-     */
-    uint64_t timecheck_rounds_since_clean;
-    /**
-     * Time Check event.
-     */
-    Context *timecheck_event;
-
-    void timecheck_start();
-    void timecheck_finish();
-    void timecheck_start_round();
-    void timecheck_finish_round(bool success = true);
-    void timecheck_cancel_round();
-    void timecheck_cleanup();
-    void timecheck_reset_event();
-    void timecheck_check_skews();
-    void timecheck_report();
-    void timecheck();
-    health_status_t timecheck_status(std::ostringstream &ss,
-                                     const double skew_bound,
-                                     const double latency);
-
-    virtual void handle_timecheck(MonOpRequestRef op) = 0;
-
-    /**
-     * Returns 'true' if this is considered to be a skew; 'false' otherwise.
-     */
-    bool timecheck_has_skew(const double skew_bound, double *abs) const {
-        double abs_skew = std::fabs(skew_bound);
-        if (abs)
-            *abs = abs_skew;
-        return (abs_skew > g_conf()->mon_clock_drift_allowed);
-    }
-
-    /**
-     * @} Timecheck end
-     */
 
     /**
      * Handle ping messages from others.
@@ -301,10 +225,6 @@ public:
 
     virtual void get_mon_status(ceph::Formatter *f) = 0;
     virtual void _quorum_status(ceph::Formatter *f, std::ostream& ss) = 0;
-
-
-    virtual bool _add_bootstrap_peer_hint(std::string_view cmd, const cmdmap_t& cmdmap,
-                                  std::ostream& ss) = 0;
 
     void handle_tell_command(MonOpRequestRef op);
     void handle_route(MonOpRequestRef op);
@@ -628,6 +548,58 @@ public:
                          std::ostream& out) = 0;
 
     bool is_keyring_required();
+
+
+    /**
+     * Vector holding the Services serviced by this Monitor.
+     */
+    std::array<std::unique_ptr<Service>, PAXOS_NUM> services;
+
+    class MDSMonitor *mdsmon() {
+        return (class MDSMonitor *)services[PAXOS_MDSMAP].get();
+    }
+
+    class MonmapMonitor *monmon() {
+        return (class MonmapMonitor *)services[PAXOS_MONMAP].get();
+    }
+
+    class OSDMonitor *osdmon() {
+        return (class OSDMonitor *)services[PAXOS_OSDMAP].get();
+    }
+
+    class AuthMonitor *authmon() {
+        return (class AuthMonitor *)services[PAXOS_AUTH].get();
+    }
+
+    class LogMonitor *logmon() {
+        return (class LogMonitor*) services[PAXOS_LOG].get();
+    }
+
+    class MgrMonitor *mgrmon() {
+        return (class MgrMonitor*) services[PAXOS_MGR].get();
+    }
+
+    class MgrStatMonitor *mgrstatmon() {
+        return (class MgrStatMonitor*) services[PAXOS_MGRSTAT].get();
+    }
+
+    class HealthMonitor *healthmon() {
+        return (class HealthMonitor*) services[PAXOS_HEALTH].get();
+    }
+
+    class ConfigMonitor *configmon() {
+        return (class ConfigMonitor*) services[PAXOS_CONFIG].get();
+    }
+
+    class KVMonitor *kvmon() {
+        return (class KVMonitor*) services[PAXOS_KV].get();
+    }
+
+    friend class OSDMonitor;
+    friend class MDSMonitor;
+    friend class MonmapMonitor;
+    friend class LogMonitor;
+    friend class KVMonitor;
 
 protected:
     // don't allow copying

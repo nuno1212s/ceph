@@ -7,10 +7,6 @@
 #include "AbstractMonitor.h"
 
 class SMRProtocol {
-    /**
-     * @}
-     */
-
     virtual std::string get_name() const = 0;
 
 public:
@@ -49,7 +45,25 @@ public:
      */
     virtual bool is_writeable() = 0;
 
+    /**
+     * Check if we are currently in the Writing phase of the SMR
+     *
+     * We are writing if:
+     *
+     * @li We are currently in the middle of a consensus instance of the SMR protocol
+     *
+     * @return 'true' if we are writing; 'false' otherwise
+     */
     virtual bool is_writing() const = 0;
+
+    /**
+     * Check if we are currently Writing to disk a previous phase of the SMR protocol
+     *
+     * This is in particular important for the Paxos protocol.
+     *
+     * @return
+     */
+    virtual bool is_writing_previous() const = 0;
 
     /**
      * Add c to the list of callbacks waiting for us to become active.
@@ -87,11 +101,15 @@ public:
         wait_for_writeable(o, c);
     }
 
-    virtual bool is_writing_previous() = 0;
-
+    /**
+     * Read and prepare the given transaction
+     */
     virtual void read_and_prepare_transactions(MonitorDBStore::TransactionRef tx,
                                                version_t first, version_t last) = 0;
 
+    /**
+     * Execute a given request in this SMR protocol
+     */
     virtual void dispatch(MonOpRequestRef op) = 0;
 
     /**
@@ -145,6 +163,37 @@ public:
     virtual version_t read_current(ceph::buffer::list &bl) = 0;
 
     /**
+     * Read a value for a service / key combination
+     *
+     * @param[in] service_name The name of the service
+     * @param[in] key The key that we want to retrieve
+     * @param[out] bl Where to put the result
+     * @return 'true' if we successfully read the value; 'false' otherwise
+     */
+    virtual int
+    read_version_from_service(const std::string &service_name, const std::string &key, buffer::list &bl) = 0;
+
+    /**
+     * Read a value for a service / version combination
+     *
+     * @param[in] service_name The name of the service
+     * @param[in] v The key that we want to retrieve
+     * @param[out] bl Where to put the result
+     * @return 'true' if we successfully read the value; 'false' otherwise
+     */
+    virtual int read_version_from_service(const std::string &service_name, version_t v, buffer::list &bl) = 0;
+
+    /**
+     * Read the latest committed version
+     *
+     * @param[in] service_name The name of the service
+     * @param[in] key The key to get the latest version for
+     * @return The latest version present for the given service/key combination. Returns 0 if no value was read
+     */
+    virtual version_t read_current_from_service(const std::string &service_name,
+                                                const std::string &key) = 0;
+
+    /**
      * Get a transaction to submit operations to propose against
      *
      * Apply operations to this transaction.
@@ -154,9 +203,37 @@ public:
     virtual MonitorDBStore::TransactionRef get_pending_transaction() = 0;
 
     /**
+    * (try to) trigger a proposal
+    *
+    * Tell the SMR Protocol that it should submit the pending proposal.  Note that if it
+    * is not active (e.g., because it is already in the midst of committing
+    * something) that will be deferred (e.g., until the current round finishes).
+    */
+    virtual bool trigger_propose() = 0;
+
+    /**
      * Cancel all of Paxos' timeout/renew events.
      */
     virtual void cancel_events() = 0;
+
+    /**
+ * Combine two keys to generate a new key that can be searched in the service store
+ * @param prefix
+ * @param suffix
+ * @return
+ */
+    std::string combine_strings(const std::string &prefix, const std::string &suffix) {
+        return get_store()->combine_strings(prefix, suffix);
+    }
+
+    std::string combine_strings(const std::string &prefix, const version_t ver) {
+        std::ostringstream os;
+        os << ver;
+        return combine_strings(prefix, os.str());
+    }
+
+protected:
+    virtual MonitorDBStore *get_store() = 0;
 };
 
 

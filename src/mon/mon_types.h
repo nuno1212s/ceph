@@ -24,7 +24,7 @@
 #include "common/bit_str.h"
 #include "common/ceph_releases.h"
 
-// use as paxos_service index
+// use as services index
 enum {
   PAXOS_MDSMAP,
   PAXOS_OSDMAP,

@@ -2,8 +2,8 @@
 #define CEPH_PAXOSMONITOR_H
 
 #include "AbstractMonitor.h"
-#include "Paxos.h"
 #include "Elector.h"
+#include "PaxosSmr.h"
 
 class PaxosMonitor : public AbstractMonitor {
     // -- monitor state --
@@ -62,19 +62,31 @@ public:
 
     // -- elector --
 private:
-    std::unique_ptr<Paxos> paxos;
+    std::unique_ptr<PaxosSMR> paxos;
     Elector elector;
     friend class Elector;
 
     /// features we require of peers (based on on-disk compatset)
-    uint64_t required_features;
+    uint64_t required_features{};
 
-    int leader;            // current leader (to best of knowledge)
+    int leader{};            // current leader (to best of knowledge)
     std::set<int> quorum;       // current active set of monitors (if !starting)
     ceph::mono_clock::time_point quorum_since;  // when quorum formed
     utime_t leader_since;  // when this monitor became the leader, if it is the leader
     utime_t exited_quorum; // time detected as not in quorum; 0 if in
     std::set<std::string> outside_quorum;
+
+    /// true if we have ever joined a quorum.  if false, we are either a
+    /// new cluster, a newly joining monitor, or a just-upgraded
+    /// monitor.
+    bool has_ever_joined;
+
+    std::vector<MonCommand> leader_mon_commands; // quorum leader's commands
+    std::vector<MonCommand> local_mon_commands;  // commands i support
+    ceph::buffer::list local_mon_commands_bl;       // encoded version of above
+
+    std::vector<MonCommand> prenautilus_local_mon_commands;
+    ceph::buffer::list prenautilus_local_mon_commands_bl;
 
     bool stretch_mode_engaged{false};
     bool degraded_stretch_mode{false};
@@ -88,9 +100,13 @@ private:
     void disconnect_disallowed_stretch_sessions();
     void set_elector_disallowed_leaders(bool allow_election);
 
-public
-    epoch_t get_epoch();
+public:
+    epoch_t get_epoch() {
+        return elector.get_epoch();
+    }
+
     int get_leader() const { return leader; }
+
     std::string get_leader_name() {
         return quorum.empty() ? std::string() : monmap->get_name(leader);
     }
@@ -174,16 +190,16 @@ public:
     };
 
     std::map<std::uint64_t, SyncProvider> sync_providers;  ///< cookie -> SyncProvider for those syncing from us
-    uint64_t sync_provider_count;   ///< counter for issued cookies to keep them unique
+    uint64_t sync_provider_count{};   ///< counter for issued cookies to keep them unique
 
     /**
      * @} // requester state
      */
     entity_addrvec_t sync_provider;  ///< who we are syncing from
-    uint64_t sync_cookie;          ///< 0 if we are starting, non-zero otherwise
-    bool sync_full;                ///< true if we are a full sync, false for recent catch-up
-    version_t sync_start_version;  ///< last_committed at sync start
-    Context *sync_timeout_event;   ///< timeout event
+    uint64_t sync_cookie{};          ///< 0 if we are starting, non-zero otherwise
+    bool sync_full{};                ///< true if we are a full sync, false for recent catch-up
+    version_t sync_start_version{};  ///< last_committed at sync start
+    Context *sync_timeout_event{};   ///< timeout event
 
     /**
      * floor for sync source
@@ -208,7 +224,7 @@ public:
      * Avoid this by preserving our old last_committed value prior to
      * sync and never going backwards.
      */
-    version_t sync_last_committed_floor;
+    version_t sync_last_committed_floor{};
 
     /**
      * Obtain the synchronization target prefixes in set form.
@@ -309,25 +325,107 @@ private:
 
     void handle_sync_get_cookie(MonOpRequestRef op);
     void handle_sync_get_chunk(MonOpRequestRef op);
-    void handle_sync_finish(MonOpRequestRef op);
 
     void handle_sync_cookie(MonOpRequestRef op);
-    void handle_sync_forward(MonOpRequestRef op);
     void handle_sync_chunk(MonOpRequestRef op);
     void handle_sync_no_cookie(MonOpRequestRef op);
+
+    //These are not implemented in the original ceph version ?
+    void handle_sync_finish(MonOpRequestRef op);
+    void handle_sync_forward(MonOpRequestRef op);
 
     /**
      * @} // Synchronization
      */
 
+    std::list<Context*> waitfor_quorum;
+    std::list<Context*> maybe_wait_for_quorum;
+
 public:
 
+    /**
+     * @defgroup Monitor_h_TimeCheck Monitor Clock Drift Early Warning System
+     * @{
+     *
+     * We use time checks to keep track of any clock drifting going on in the
+     * cluster. This is accomplished by periodically ping each monitor in the
+     * quorum and register its response time on a map, assessing how much its
+     * clock has drifted. We also take this opportunity to assess the latency
+     * on response.
+     *
+     * This mechanism works as follows:
+     *
+     *  - Leader sends out a 'PING' message to each other monitor in the quorum.
+     *    The message is timestamped with the leader's current time. The leader's
+     *    current time is recorded in a map, associated with each peon's
+     *    instance.
+     *  - The peon replies to the leader with a timestamped 'PONG' message.
+     *  - The leader calculates a delta between the peon's timestamp and its
+     *    current time and stashes it.
+     *  - The leader also calculates the time it took to receive the 'PONG'
+     *    since the 'PING' was sent, and stashes an approximate latency estimate.
+     *  - Once all the quorum members have pong'ed, the leader will share the
+     *    clock skew and latency maps with all the monitors in the quorum.
+     */
+    std::map<int, utime_t> timecheck_waiting;
+    std::map<int, double> timecheck_skews;
+    std::map<int, double> timecheck_latencies;
+    // odd value means we are mid-round; even value means the round has
+    // finished.
+    version_t timecheck_round{};
+    unsigned int timecheck_acks{};
+    utime_t timecheck_round_start;
+    friend class HealthMonitor;
+    /* When we hit a skew we will start a new round based off of
+     * 'mon_timecheck_skew_interval'. Each new round will be backed off
+     * until we hit 'mon_timecheck_interval' -- which is the typical
+     * interval when not in the presence of a skew.
+     *
+     * This variable tracks the number of rounds with skews since last clean
+     * so that we can report to the user and properly adjust the backoff.
+     */
+    uint64_t timecheck_rounds_since_clean{};
+    /**
+     * Time Check event.
+     */
+    Context *timecheck_event{};
+
+    void timecheck_start();
+    void timecheck_finish();
+    void timecheck_start_round();
+    void timecheck_finish_round(bool success = true);
+    void timecheck_cancel_round();
+    void timecheck_cleanup();
+    void timecheck_reset_event();
+    void timecheck_check_skews();
+    void timecheck_report();
+    void timecheck();
+
+    health_status_t timecheck_status(std::ostringstream &ss,
+                                     const double skew_bound,
+                                     const double latency);
+
+    void handle_timecheck(MonOpRequestRef op);
+
+    /**
+     * Returns 'true' if this is considered to be a skew; 'false' otherwise.
+     */
+    bool timecheck_has_skew(const double skew_bound, double *abs) const {
+        double abs_skew = std::fabs(skew_bound);
+        if (abs)
+            *abs = abs_skew;
+        return (abs_skew > g_conf()->mon_clock_drift_allowed);
+    }
+
+    /**
+     * @} Timecheck end
+     */
 
     /**
      * @defgroup Monitor_h_scrub
      * @{
      */
-    version_t scrub_version;            ///< paxos version we are scrubbing
+    version_t scrub_version{};            ///< paxos version we are scrubbing
     std::map<int,ScrubResult> scrub_result;  ///< results so far
 
     /**
@@ -347,8 +445,8 @@ public:
     void scrub_reset();
     void scrub_update_interval(ceph::timespan interval);
 
-    Context *scrub_event;       ///< periodic event to trigger scrub (leader)
-    Context *scrub_timeout_event;  ///< scrub round timeout (leader)
+    Context *scrub_event{};       ///< periodic event to trigger scrub (leader)
+    Context *scrub_timeout_event{};  ///< scrub round timeout (leader)
     void scrub_event_start();
     void scrub_event_cancel();
     void scrub_reset_timeout();
@@ -378,6 +476,24 @@ public:
     void cancel_probe_timeout();
     void probe_timeout(int r);
 
+    void handle_probe(MonOpRequestRef op);
+    /**
+     * Handle a Probe Operation, replying with our name, quorum and known versions.
+     *
+     * We use the MMonProbe message class for anything and everything related with
+     * Monitor probing. One of the operations relates directly with the probing
+     * itself, in which we receive a probe request and to which we reply with
+     * our name, our quorum and the known versions for each Paxos service. Thus the
+     * redundant function name. This reply will obviously be sent to the one
+     * probing/requesting these infos.
+     *
+     * @todo Add @pre and @post
+     *
+     * @param m A Probe message, with an operation of type Probe.
+     */
+    void handle_probe_probe(MonOpRequestRef op);
+    void handle_probe_reply(MonOpRequestRef op);
+
     /**
      * @} probing
      */
@@ -385,8 +501,9 @@ public:
     void get_mon_status(ceph::Formatter *f) override;
     void _quorum_status(ceph::Formatter *f, std::ostream& ss) override;
 
-    //
+    //Forward requests to the leader
     void forward_request_leader(MonOpRequestRef op);
+    //handle requests that have been forwarded to us
     void handle_forward(MonOpRequestRef op);
 
     void resend_routed_requests();
@@ -402,14 +519,12 @@ public:
     void handle_get_version(MonOpRequestRef op) override;
 
     bool _add_bootstrap_peer_hint(std::string_view cmd, const cmdmap_t& cmdmap,
-                                  std::ostream& ss) override;
+                                  std::ostream& ss);
     /**
      * @defgroup Time check things
      */
     void handle_timecheck_leader(MonOpRequestRef op);
     void handle_timecheck_peon(MonOpRequestRef op);
-
-    void handle_timecheck(MonOpRequestRef op) override;
 
     /**
      * @} Time check end
@@ -420,6 +535,32 @@ public:
      */
     void notify_new_monmap(bool can_change_external_state=false);
 
+
+public:
+
+public:
+    static void format_command_descriptions(const std::vector<MonCommand> &commands,
+                                            ceph::Formatter *f,
+                                            uint64_t features,
+                                            ceph::buffer::list *rdata);
+
+    const std::vector<MonCommand> &get_local_commands(mon_feature_t f) {
+        if (f.contains_all(ceph::features::mon::FEATURE_NAUTILUS)) {
+            return local_mon_commands;
+        } else {
+            return prenautilus_local_mon_commands;
+        }
+    }
+    const ceph::buffer::list& get_local_commands_bl(mon_feature_t f) {
+        if (f.contains_all(ceph::features::mon::FEATURE_NAUTILUS)) {
+            return local_mon_commands_bl;
+        } else {
+            return prenautilus_local_mon_commands_bl;
+        }
+    }
+    void set_leader_commands(const std::vector<MonCommand>& cmds) {
+        leader_mon_commands = cmds;
+    }
 
 public:
     PaxosMonitor(CephContext* cct_, MonitorDBStore *store, std::string nm, Messenger *m, Messenger *mgr_m, MonMap *map);
