@@ -62,7 +62,7 @@ using ceph::mono_clock;
 using ceph::mono_time;
 using ceph::parse_timespan;
 using ceph::timespan_str;
-static ostream& _prefix(std::ostream *_dout, const Monitor &mon,
+static ostream& _prefix(std::ostream *_dout, const AbstractMonitor &mon,
                         const HealthMonitor *hmon) {
   return *_dout << "mon." << mon.name << "@" << mon.rank
 		<< "(" << mon.get_state_name() << ").health ";

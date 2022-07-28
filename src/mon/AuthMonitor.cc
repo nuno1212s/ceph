@@ -67,7 +67,7 @@ using ceph::make_message;
 using ceph::mono_clock;
 using ceph::mono_time;
 using ceph::timespan_str;
-static ostream& _prefix(std::ostream *_dout, Monitor &mon, version_t v) {
+static ostream& _prefix(std::ostream *_dout, AbstractMonitor &mon, version_t v) {
   return *_dout << "mon." << mon.name << "@" << mon.rank
 		<< "(" << mon.get_state_name()
 		<< ").auth v" << v << " ";
