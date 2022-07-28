@@ -113,7 +113,7 @@ using ceph::mono_clock;
 using ceph::mono_time;
 using ceph::timespan_str;
 
-static ostream& _prefix(std::ostream *_dout, PaxosMonitor *mon) {
+static ostream &_prefix(std::ostream *_dout, PaxosMonitor *mon) {
     return *_dout << "mon." << mon->name << "@" << mon->rank
                   << "(" << mon->get_state_name()
                   << ").monmap v" << mon->monmap->epoch << " ";
@@ -238,8 +238,7 @@ void PaxosMonitor::get_mon_status(Formatter *f) {
     f->close_section(); // mon_status
 }
 
-const utime_t& PaxosMonitor::get_leader_since() const
-{
+const utime_t &PaxosMonitor::get_leader_since() const {
     ceph_assert(state == STATE_LEADER);
     return leader_since;
 }
@@ -247,23 +246,25 @@ const utime_t& PaxosMonitor::get_leader_since() const
 
 struct CMonEnableStretchMode : public Context {
     PaxosMonitor *m;
+
     CMonEnableStretchMode(PaxosMonitor *mon) : m(mon) {}
+
     void finish(int r) {
         m->try_engage_stretch_mode();
     }
 };
 
-void PaxosMonitor::do_stretch_mode_election_work()
-{
+void PaxosMonitor::do_stretch_mode_election_work() {
     dout(20) << __func__ << dendl;
     if (!is_stretch_mode() ||
-        !is_leader()) return;
+        !is_leader())
+        return;
     dout(20) << "checking for degraded stretch mode" << dendl;
-    map<string, set<string>> old_dead_buckets;
+    map <string, set<string>> old_dead_buckets;
     old_dead_buckets.swap(dead_mon_buckets);
     up_mon_buckets.clear();
     // identify if we've lost a CRUSH bucket, request OSDMonitor check for death
-    map<string,set<string>> down_mon_buckets;
+    map <string, set<string>> down_mon_buckets;
     for (unsigned i = 0; i < monmap->size(); ++i) {
         const auto &mi = monmap->mon_info[monmap->get_name(i)];
         auto ci = mi.crush_loc.find(stretch_bucket_divider);
@@ -277,7 +278,7 @@ void PaxosMonitor::do_stretch_mode_election_work()
     dout(20) << "prior dead_mon_buckets: " << old_dead_buckets
              << "; down_mon_buckets: " << down_mon_buckets
              << "; up_mon_buckets: " << up_mon_buckets << dendl;
-    for (const auto& di : down_mon_buckets) {
+    for (const auto &di: down_mon_buckets) {
         if (!up_mon_buckets.count(di.first)) {
             dead_mon_buckets[di.first] = di.second;
         }
@@ -292,7 +293,9 @@ void PaxosMonitor::do_stretch_mode_election_work()
 
 struct CMonGoDegraded : public Context {
     PaxosMonitor *m;
+
     CMonGoDegraded(PaxosMonitor *mon) : m(mon) {}
+
     void finish(int r) {
         m->maybe_go_degraded_stretch_mode();
     }
@@ -300,21 +303,22 @@ struct CMonGoDegraded : public Context {
 
 struct CMonGoRecovery : public Context {
     PaxosMonitor *m;
+
     CMonGoRecovery(PaxosMonitor *mon) : m(mon) {}
+
     void finish(int r) {
         m->go_recovery_stretch_mode();
     }
 };
 
-void PaxosMonitor::go_recovery_stretch_mode()
-{
+void PaxosMonitor::go_recovery_stretch_mode() {
     dout(20) << __func__ << dendl;
     if (!is_leader()) return;
     if (!is_degraded_stretch_mode()) return;
     if (is_recovering_stretch_mode()) return;
 
     if (dead_mon_buckets.size()) {
-        ceph_assert( 0 == "how did we try and do stretch recovery while we have dead monitor buckets?");
+        ceph_assert(0 == "how did we try and do stretch recovery while we have dead monitor buckets?");
         // we can't recover if we are missing monitors in a zone!
         return;
     }
@@ -330,15 +334,13 @@ void PaxosMonitor::go_recovery_stretch_mode()
     osdmon()->trigger_recovery_stretch_mode();
 }
 
-void PaxosMonitor::set_recovery_stretch_mode()
-{
+void PaxosMonitor::set_recovery_stretch_mode() {
     degraded_stretch_mode = true;
     recovering_stretch_mode = true;
     osdmon()->set_recovery_stretch_mode();
 }
 
-void PaxosMonitor::try_engage_stretch_mode()
-{
+void PaxosMonitor::try_engage_stretch_mode() {
     dout(20) << __func__ << dendl;
     if (stretch_mode_engaged) return;
     if (!osdmon()->is_readable()) {
@@ -355,8 +357,7 @@ void PaxosMonitor::try_engage_stretch_mode()
     }
 }
 
-void PaxosMonitor::maybe_go_degraded_stretch_mode()
-{
+void PaxosMonitor::maybe_go_degraded_stretch_mode() {
     dout(20) << __func__ << dendl;
     if (is_degraded_stretch_mode()) return;
     if (!is_leader()) return;
@@ -369,7 +370,7 @@ void PaxosMonitor::maybe_go_degraded_stretch_mode()
     // filter out the tiebreaker zone and check if remaining sites are down by OSDs too
     const auto &mi = monmap->mon_info[monmap->tiebreaker_mon];
     auto ci = mi.crush_loc.find(stretch_bucket_divider);
-    map<string, set<string>> filtered_dead_buckets = dead_mon_buckets;
+    map <string, set<string>> filtered_dead_buckets = dead_mon_buckets;
     filtered_dead_buckets.erase(ci->second);
 
     set<int> matched_down_buckets;
@@ -388,9 +389,8 @@ void PaxosMonitor::maybe_go_degraded_stretch_mode()
     }
 }
 
-void PaxosMonitor::trigger_degraded_stretch_mode(const set<string>& dead_mons,
-                                            const set<int>& dead_buckets)
-{
+void PaxosMonitor::trigger_degraded_stretch_mode(const set<string> &dead_mons,
+                                                 const set<int> &dead_buckets) {
     dout(20) << __func__ << dendl;
     ceph_assert(osdmon()->is_writeable());
     ceph_assert(monmon()->is_writeable());
@@ -409,8 +409,7 @@ void PaxosMonitor::trigger_degraded_stretch_mode(const set<string>& dead_mons,
     set_degraded_stretch_mode();
 }
 
-void PaxosMonitor::set_degraded_stretch_mode()
-{
+void PaxosMonitor::set_degraded_stretch_mode() {
     degraded_stretch_mode = true;
     recovering_stretch_mode = false;
     osdmon()->set_degraded_stretch_mode();
@@ -418,15 +417,16 @@ void PaxosMonitor::set_degraded_stretch_mode()
 
 struct CMonGoHealthy : public Context {
     PaxosMonitor *m;
+
     CMonGoHealthy(PaxosMonitor *mon) : m(mon) {}
+
     void finish(int r) {
         m->trigger_healthy_stretch_mode();
     }
 };
 
 
-void PaxosMonitor::trigger_healthy_stretch_mode()
-{
+void PaxosMonitor::trigger_healthy_stretch_mode() {
     dout(20) << __func__ << dendl;
     if (!is_degraded_stretch_mode()) return;
     if (!is_leader()) return;
@@ -442,15 +442,13 @@ void PaxosMonitor::trigger_healthy_stretch_mode()
     monmon()->trigger_healthy_stretch_mode();
 }
 
-void PaxosMonitor::set_healthy_stretch_mode()
-{
+void PaxosMonitor::set_healthy_stretch_mode() {
     degraded_stretch_mode = false;
     recovering_stretch_mode = false;
     osdmon()->set_healthy_stretch_mode();
 }
 
-bool PaxosMonitor::session_stretch_allowed(MonSession *s, MonOpRequestRef& op)
-{
+bool PaxosMonitor::session_stretch_allowed(MonSession *s, MonOpRequestRef &op) {
     if (!is_stretch_mode()) return true;
     if (s->proxy_con) return true;
     if (s->validated_stretch_connection) return true;
@@ -489,8 +487,7 @@ bool PaxosMonitor::session_stretch_allowed(MonSession *s, MonOpRequestRef& op)
     return true;
 }
 
-void PaxosMonitor::disconnect_disallowed_stretch_sessions()
-{
+void PaxosMonitor::disconnect_disallowed_stretch_sessions() {
     dout(20) << __func__ << dendl;
     MonOpRequestRef blank;
     auto i = session_map.sessions.begin();
@@ -501,14 +498,13 @@ void PaxosMonitor::disconnect_disallowed_stretch_sessions()
     }
 }
 
-void PaxosMonitor::set_elector_disallowed_leaders(bool allow_election)
-{
+void PaxosMonitor::set_elector_disallowed_leaders(bool allow_election) {
     set<int> dl;
-    for (auto name : monmap->disallowed_leaders) {
+    for (auto name: monmap->disallowed_leaders) {
         dl.insert(monmap->get_rank(name));
     }
     if (is_stretch_mode()) {
-        for (auto name : monmap->stretch_marked_down_mons) {
+        for (auto name: monmap->stretch_marked_down_mons) {
             dl.insert(monmap->get_rank(name));
         }
         dl.insert(monmap->get_rank(monmap->tiebreaker_mon));
@@ -552,8 +548,7 @@ void PaxosMonitor::notify_new_monmap(bool can_change_external_state) {
 }
 
 // called by bootstrap(), or on leader|peon -> electing
-void PaxosMonitor::_reset()
-{
+void PaxosMonitor::_reset() {
     dout(10) << __func__ << dendl;
 
     // disable authentication
@@ -581,13 +576,12 @@ void PaxosMonitor::_reset()
 
     paxos->restart();
 
-    for (auto& svc : services) {
+    for (auto &svc: services) {
         svc->restart();
     }
 }
 
-void PaxosMonitor::wait_for_paxos_write()
-{
+void PaxosMonitor::wait_for_paxos_write() {
     if (paxos->is_writing() || paxos->is_writing_previous()) {
         dout(10) << __func__ << " flushing pending write" << dendl;
         lock.unlock();
@@ -597,11 +591,10 @@ void PaxosMonitor::wait_for_paxos_write()
     }
 }
 
-void PaxosMonitor::_finish_svc_election()
-{
+void PaxosMonitor::_finish_svc_election() {
     ceph_assert(state == STATE_LEADER || state == STATE_PEON);
 
-    for (auto& svc : services) {
+    for (auto &svc: services) {
         // we already called election_finished() on monmon(); avoid callig twice
         if (state == STATE_LEADER && svc.get() == monmon())
             continue;
@@ -609,8 +602,7 @@ void PaxosMonitor::_finish_svc_election()
     }
 }
 
-void PaxosMonitor::respawn()
-{
+void PaxosMonitor::respawn() {
     // --- WARNING TO FUTURE COPY/PASTERS ---
     // You must also add a call like
     //
@@ -621,10 +613,10 @@ void PaxosMonitor::respawn()
 
     dout(0) << __func__ << dendl;
 
-    char *new_argv[orig_argc+1];
+    char *new_argv[orig_argc + 1];
     dout(1) << " e: '" << orig_argv[0] << "'" << dendl;
-    for (int i=0; i<orig_argc; i++) {
-        new_argv[i] = (char *)orig_argv[i];
+    for (int i = 0; i < orig_argc; i++) {
+        new_argv[i] = (char *) orig_argv[i];
         dout(1) << " " << i << ": '" << orig_argv[i] << "'" << dendl;
     }
     new_argv[orig_argc] = NULL;
@@ -635,7 +627,7 @@ void PaxosMonitor::respawn()
      */
     char exe_path[PATH_MAX] = "";
 #ifdef PROCPREFIX
-    if (readlink(PROCPREFIX "/proc/self/exe", exe_path, PATH_MAX-1) != -1) {
+    if (readlink(PROCPREFIX "/proc/self/exe", exe_path, PATH_MAX - 1) != -1) {
         dout(1) << "respawning with exe " << exe_path << dendl;
         strcpy(exe_path, PROCPREFIX "/proc/self/exe");
     } else {
@@ -649,7 +641,7 @@ void PaxosMonitor::respawn()
         dout(1) << " cwd " << cwd << dendl;
 
         /* Fall back to a best-effort: just running in our CWD */
-        strncpy(exe_path, orig_argv[0], PATH_MAX-1);
+        strncpy(exe_path, orig_argv[0], PATH_MAX - 1);
     }
 
     dout(1) << " exe_path " << exe_path << dendl;
@@ -665,8 +657,7 @@ void PaxosMonitor::respawn()
     ceph_abort();
 }
 
-void PaxosMonitor::bootstrap()
-{
+void PaxosMonitor::bootstrap() {
     dout(10) << "bootstrap" << dendl;
     wait_for_paxos_write();
 
@@ -758,13 +749,13 @@ void PaxosMonitor::bootstrap()
     // probe monitors
     dout(10) << "probing other monitors" << dendl;
     for (unsigned i = 0; i < monmap->size(); i++) {
-        if ((int)i != rank)
+        if ((int) i != rank)
             send_mon_message(
                     new MMonProbe(monmap->fsid, MMonProbe::OP_PROBE, name, has_ever_joined,
                                   ceph_release()),
                     i);
     }
-    for (auto& av : extra_probe_peers) {
+    for (auto &av: extra_probe_peers) {
         if (av != messenger->get_myaddrs()) {
             messenger->send_to_mon(
                     new MMonProbe(monmap->fsid, MMonProbe::OP_PROBE, name, has_ever_joined,
@@ -774,8 +765,7 @@ void PaxosMonitor::bootstrap()
     }
 }
 
-void PaxosMonitor::join_election()
-{
+void PaxosMonitor::join_election() {
     dout(10) << __func__ << dendl;
     wait_for_paxos_write();
     _reset();
@@ -784,8 +774,7 @@ void PaxosMonitor::join_election()
     logger->inc(l_mon_num_elections);
 }
 
-void PaxosMonitor::start_election()
-{
+void PaxosMonitor::start_election() {
     dout(10) << "start_election" << dendl;
     wait_for_paxos_write();
     _reset();
@@ -798,8 +787,7 @@ void PaxosMonitor::start_election()
     elector.call_election();
 }
 
-void PaxosMonitor::win_standalone_election()
-{
+void PaxosMonitor::win_standalone_election() {
     dout(1) << "win_standalone_election" << dendl;
 
     // bump election epoch, in case the previous epoch included other
@@ -811,7 +799,7 @@ void PaxosMonitor::win_standalone_election()
     set<int> q;
     q.insert(rank);
 
-    map<int,Metadata> metadata;
+    map<int, Metadata> metadata;
     collect_metadata(&metadata[0]);
 
     win_election(elector.get_epoch(), q,
@@ -822,10 +810,10 @@ void PaxosMonitor::win_standalone_election()
 }
 
 
-void PaxosMonitor::win_election(epoch_t epoch, const set<int>& active, uint64_t features,
-                           const mon_feature_t& mon_features,
-                           ceph_release_t min_mon_release,
-                           const map<int,Metadata>& metadata) {
+void PaxosMonitor::win_election(epoch_t epoch, const set<int> &active, uint64_t features,
+                                const mon_feature_t &mon_features,
+                                ceph_release_t min_mon_release,
+                                const map<int, Metadata> &metadata) {
     dout(10) << __func__ << " epoch " << epoch << " quorum " << active
              << " features " << features
              << " mon_features " << mon_features
@@ -911,10 +899,9 @@ void PaxosMonitor::win_election(epoch_t epoch, const set<int>& active, uint64_t 
 }
 
 void PaxosMonitor::lose_election(epoch_t epoch, set<int> &q, int l,
-                            uint64_t features,
-                            const mon_feature_t& mon_features,
-                            ceph_release_t min_mon_release)
-{
+                                 uint64_t features,
+                                 const mon_feature_t &mon_features,
+                                 ceph_release_t min_mon_release) {
     state = STATE_PEON;
     leader_since = utime_t();
     quorum_since = mono_clock::now();
@@ -938,8 +925,7 @@ void PaxosMonitor::lose_election(epoch_t epoch, set<int> &q, int l,
     finish_election();
 }
 
-void PaxosMonitor::finish_election()
-{
+void PaxosMonitor::finish_election() {
     apply_quorum_to_compatset_features();
     apply_monmap_to_compatset_features();
     timecheck_finish();
@@ -959,12 +945,12 @@ void PaxosMonitor::finish_election()
     // am i named and located properly?
     string cur_name = monmap->get_name(messenger->get_myaddrs());
     const auto my_infop = monmap->mon_info.find(cur_name);
-    const map<string,string>& map_crush_loc = my_infop->second.crush_loc;
+    const map <string, string> &map_crush_loc = my_infop->second.crush_loc;
 
     if (cur_name != name ||
         (need_set_crush_loc && map_crush_loc != crush_loc)) {
         dout(10) << " renaming/moving myself from " << cur_name << "/"
-                 << map_crush_loc <<" -> " << name << "/" << crush_loc << dendl;
+                 << map_crush_loc << " -> " << name << "/" << crush_loc << dendl;
         send_mon_message(new MMonJoin(monmap->fsid, name, messenger->get_myaddrs(),
                                       crush_loc, need_set_crush_loc),
                          leader);
@@ -1237,8 +1223,7 @@ void PaxosMonitor::waitlist_or_zap_client(MonOpRequestRef op) {
     }
 }
 
-void PaxosMonitor::tick()
-{
+void PaxosMonitor::tick() {
     // ok go.
     dout(11) << "tick" << dendl;
     const utime_t now = ceph_clock_now();
@@ -1247,10 +1232,10 @@ void PaxosMonitor::tick()
     if (is_leader()) {
         const auto min_period = g_conf().get_val<int64_t>(
                 "mon_health_log_update_period");
-        for (auto& svc : services) {
+        for (auto &svc: services) {
             auto health = svc->get_health_checks();
 
-            for (const auto &i : health.checks) {
+            for (const auto &i: health.checks) {
                 const std::string &code = i.first;
                 const std::string &summary = i.second.summary;
                 const health_status_t severity = i.second.severity;
@@ -1277,7 +1262,7 @@ void PaxosMonitor::tick()
         }
     }
 
-    for (auto& svc : services) {
+    for (auto &svc: services) {
         svc->tick();
         svc->maybe_trim();
     }
@@ -1288,7 +1273,7 @@ void PaxosMonitor::tick()
         auto p = session_map.sessions.begin();
 
         bool out_for_too_long = (!exited_quorum.is_zero() &&
-                                 now > (exited_quorum + 2*g_conf()->mon_lease));
+                                 now > (exited_quorum + 2 * g_conf()->mon_lease));
 
         while (!p.end()) {
             MonSession *s = *p;
@@ -1339,8 +1324,7 @@ void PaxosMonitor::tick()
     new_tick();
 }
 
-void PaxosMonitor::handle_command(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_command(MonOpRequestRef op) {
     ceph_assert(op->is_type_command());
     auto m = op->get_req<MMonCommand>();
     if (m->fsid != monmap->fsid) {
@@ -1396,10 +1380,10 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
         bufferlist rdata;
         Formatter *f = Formatter::create("json");
 
-        std::vector<MonCommand> commands = static_cast<MgrMonitor*>(
+        std::vector<MonCommand> commands = static_cast<MgrMonitor *>(
                 services[PAXOS_MGR].get())->get_command_descs();
 
-        for (auto& c : leader_mon_commands) {
+        for (auto &c: leader_mon_commands) {
             commands.push_back(c);
         }
 
@@ -1430,7 +1414,7 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
     // validate command is in leader map
 
     const MonCommand *leader_cmd;
-    const auto& mgr_cmds = mgrmon()->get_command_descs();
+    const auto &mgr_cmds = mgrmon()->get_command_descs();
     const MonCommand *mgr_cmd = nullptr;
     if (!mgr_cmds.empty()) {
         mgr_cmd = _get_moncommand(prefix, mgr_cmds);
@@ -1502,13 +1486,13 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
             (mon_cmd->requires_perm('w') || mon_cmd->requires_perm('x'));
 
     // validate user's permissions for requested command
-    map<string,string> param_str_map;
+    map<string, string> param_str_map;
 
     // Catch bad_cmd_get exception if _generate_command_map() throws it
     try {
         _generate_command_map(cmdmap, param_str_map);
     }
-    catch(bad_cmd_get& e) {
+    catch (bad_cmd_get &e) {
         reply_command(op, -EINVAL, e.what(), 0);
     }
 
@@ -1559,7 +1543,7 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
     }
 
     if (mon_cmd->is_mgr()) {
-        const auto& hdr = m->get_header();
+        const auto &hdr = m->get_header();
         uint64_t size = hdr.front_len + hdr.middle_len + hdr.data_len;
         uint64_t max = g_conf().get_val<Option::size_t>("mon_client_bytes")
                        * g_conf().get_val<double>("mon_mgr_proxy_client_bytes_ratio");
@@ -1581,7 +1565,7 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
         return;
     }
 
-    if ((module == "mds" || module == "fs")  &&
+    if ((module == "mds" || module == "fs") &&
         prefix != "fs authorize") {
         mdsmon()->dispatch(op);
         return;
@@ -1668,7 +1652,7 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
         f->open_object_section("time_sync");
         if (!timecheck_skews.empty()) {
             f->open_object_section("time_skew_status");
-            for (auto& i : timecheck_skews) {
+            for (auto &i: timecheck_skews) {
                 double skew = i.second;
                 double latency = timecheck_latencies[i.first];
                 string name = monmap->get_name(i.first);
@@ -1688,7 +1672,7 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
         f->open_object_section("timechecks");
         f->dump_unsigned("epoch", get_epoch());
         f->dump_int("round", timecheck_round);
-        f->dump_stream("round_status") << ((timecheck_round%2) ?
+        f->dump_stream("round_status") << ((timecheck_round % 2) ?
                                            "on-going" : "finished");
         f->close_section();
         f->close_section();
@@ -1923,10 +1907,10 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
             goto out;
         }
         set<string> wouldbe;
-        for (auto rank : quorum) {
+        for (auto rank: quorum) {
             wouldbe.insert(monmap->get_name(rank));
         }
-        for (auto& n : ids) {
+        for (auto &n: ids) {
             if (monmap->contains(n)) {
                 wouldbe.erase(n);
             } else {
@@ -1992,13 +1976,13 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
     } else if (prefix == "versions") {
         if (!f)
             f.reset(Formatter::create("json-pretty"));
-        map<string,int> overall;
+        map<string, int> overall;
         f->open_object_section("version");
-        map<string,int> mon, mgr, osd, mds;
+        map<string, int> mon, mgr, osd, mds;
 
         count_metadata("ceph_version", &mon);
         f->open_object_section("mon");
-        for (auto& p : mon) {
+        for (auto &p: mon) {
             f->dump_int(p.first.c_str(), p.second);
             overall[p.first] += p.second;
         }
@@ -2006,7 +1990,7 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
 
         mgrmon()->count_metadata("ceph_version", &mgr);
         f->open_object_section("mgr");
-        for (auto& p : mgr) {
+        for (auto &p: mgr) {
             f->dump_int(p.first.c_str(), p.second);
             overall[p.first] += p.second;
         }
@@ -2014,7 +1998,7 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
 
         osdmon()->count_metadata("ceph_version", &osd);
         f->open_object_section("osd");
-        for (auto& p : osd) {
+        for (auto &p: osd) {
             f->dump_int(p.first.c_str(), p.second);
             overall[p.first] += p.second;
         }
@@ -2022,21 +2006,21 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
 
         mdsmon()->count_metadata("ceph_version", &mds);
         f->open_object_section("mds");
-        for (auto& p : mds) {
+        for (auto &p: mds) {
             f->dump_int(p.first.c_str(), p.second);
             overall[p.first] += p.second;
         }
         f->close_section();
 
-        for (auto& p : mgrstatmon()->get_service_map().services) {
+        for (auto &p: mgrstatmon()->get_service_map().services) {
             auto &service = p.first;
             if (ServiceMap::is_normal_ceph_entity(service)) {
                 continue;
             }
             f->open_object_section(service.c_str());
-            map<string,int> m;
+            map<string, int> m;
             p.second.count_metadata("ceph_version", &m);
-            for (auto& q : m) {
+            for (auto &q: m) {
                 f->dump_int(q.first.c_str(), q.second);
                 overall[q.first] += q.second;
             }
@@ -2044,7 +2028,7 @@ void PaxosMonitor::handle_command(MonOpRequestRef op)
         }
 
         f->open_object_section("overall");
-        for (auto& p : overall) {
+        for (auto &p: overall) {
             f->dump_int(p.first.c_str(), p.second);
         }
         f->close_section();
@@ -2082,7 +2066,7 @@ void PaxosMonitor::_dispatch_op(MonOpRequestRef op) {
             /* log acks are sent from a monitor we sent the MLog to, and are
                never sent by clients to us. */
         case MSG_LOGACK:
-            log_client.handle_log_ack((MLogAck*)op->get_req());
+            log_client.handle_log_ack((MLogAck *) op->get_req());
             return;
 
             // monmap
@@ -2092,8 +2076,7 @@ void PaxosMonitor::_dispatch_op(MonOpRequestRef op) {
             return;
 
             // paxos
-        case MSG_MON_PAXOS:
-        {
+        case MSG_MON_PAXOS: {
             op->set_type_paxos();
             auto pm = op->get_req<MMonPaxos>();
             if (!op->get_session()->is_capable("mon", MON_CAP_X)) {
@@ -2552,8 +2535,7 @@ bool Monitor::_add_bootstrap_peer_hint(std::string_view cmd,
 }
 
 
-void PaxosMonitor::timecheck_start()
-{
+void PaxosMonitor::timecheck_start() {
     dout(10) << __func__ << dendl;
     timecheck_cleanup();
     if (get_quorum_mon_features().contains_all(
@@ -2562,14 +2544,12 @@ void PaxosMonitor::timecheck_start()
     }
 }
 
-void PaxosMonitor::timecheck_finish()
-{
+void PaxosMonitor::timecheck_finish() {
     dout(10) << __func__ << dendl;
     timecheck_cleanup();
 }
 
-void PaxosMonitor::timecheck_start_round()
-{
+void PaxosMonitor::timecheck_start_round() {
     dout(10) << __func__ << " curr " << timecheck_round << dendl;
     ceph_assert(is_leader());
 
@@ -2581,7 +2561,7 @@ void PaxosMonitor::timecheck_start_round()
     if (timecheck_round % 2) {
         dout(10) << __func__ << " there's a timecheck going on" << dendl;
         utime_t curr_time = ceph_clock_now();
-        double max = g_conf()->mon_timecheck_interval*3;
+        double max = g_conf()->mon_timecheck_interval * 3;
         if (curr_time - timecheck_round_start < max) {
             dout(10) << __func__ << " keep current round going" << dendl;
             goto out;
@@ -2594,7 +2574,7 @@ void PaxosMonitor::timecheck_start_round()
 
     ceph_assert(timecheck_round % 2 == 0);
     timecheck_acks = 0;
-    timecheck_round ++;
+    timecheck_round++;
     timecheck_round_start = ceph_clock_now();
     dout(10) << __func__ << " new " << timecheck_round << dendl;
 
@@ -2604,11 +2584,10 @@ void PaxosMonitor::timecheck_start_round()
     timecheck_reset_event();
 }
 
-void PaxosMonitor::timecheck_finish_round(bool success)
-{
+void PaxosMonitor::timecheck_finish_round(bool success) {
     dout(10) << __func__ << " curr " << timecheck_round << dendl;
     ceph_assert(timecheck_round % 2);
-    timecheck_round ++;
+    timecheck_round++;
     timecheck_round_start = utime_t();
 
     if (success) {
@@ -2621,7 +2600,7 @@ void PaxosMonitor::timecheck_finish_round(bool success)
 
     dout(10) << __func__ << " " << timecheck_waiting.size()
              << " peers still waiting:";
-            for (auto& p : timecheck_waiting) {
+            for (auto &p: timecheck_waiting) {
                 *_dout << " mon." << p.first;
             }
             *_dout << dendl;
@@ -2630,13 +2609,11 @@ void PaxosMonitor::timecheck_finish_round(bool success)
     dout(10) << __func__ << " finished to " << timecheck_round << dendl;
 }
 
-void PaxosMonitor::timecheck_cancel_round()
-{
+void PaxosMonitor::timecheck_cancel_round() {
     timecheck_finish_round(false);
 }
 
-void PaxosMonitor::timecheck_cleanup()
-{
+void PaxosMonitor::timecheck_cleanup() {
     timecheck_round = 0;
     timecheck_acks = 0;
     timecheck_round_start = utime_t();
@@ -2652,8 +2629,7 @@ void PaxosMonitor::timecheck_cleanup()
     timecheck_rounds_since_clean = 0;
 }
 
-void PaxosMonitor::timecheck_reset_event()
-{
+void PaxosMonitor::timecheck_reset_event() {
     if (timecheck_event) {
         timer.cancel_event(timecheck_event);
         timecheck_event = NULL;
@@ -2677,8 +2653,7 @@ void PaxosMonitor::timecheck_reset_event()
             }});
 }
 
-void PaxosMonitor::timecheck_check_skews()
-{
+void PaxosMonitor::timecheck_check_skews() {
     dout(10) << __func__ << dendl;
     ceph_assert(is_leader());
     ceph_assert((timecheck_round % 2) == 0);
@@ -2689,7 +2664,7 @@ void PaxosMonitor::timecheck_check_skews()
     ceph_assert(timecheck_latencies.size() == timecheck_skews.size());
 
     bool found_skew = false;
-    for (auto& p : timecheck_skews) {
+    for (auto &p: timecheck_skews) {
         double abs_skew;
         if (timecheck_has_skew(p.second, &abs_skew)) {
             dout(10) << __func__
@@ -2714,8 +2689,7 @@ void PaxosMonitor::timecheck_check_skews()
 
 }
 
-void PaxosMonitor::timecheck_report()
-{
+void PaxosMonitor::timecheck_report() {
     dout(10) << __func__ << dendl;
     ceph_assert(is_leader());
     ceph_assert((timecheck_round % 2) == 0);
@@ -2734,7 +2708,7 @@ void PaxosMonitor::timecheck_report()
         m->epoch = get_epoch();
         m->round = timecheck_round;
 
-        for (auto& it : timecheck_skews) {
+        for (auto &it: timecheck_skews) {
             double skew = it.second;
             double latency = timecheck_latencies[it.first];
 
@@ -2753,8 +2727,7 @@ void PaxosMonitor::timecheck_report()
     }
 }
 
-void PaxosMonitor::timecheck()
-{
+void PaxosMonitor::timecheck() {
     dout(10) << __func__ << dendl;
     ceph_assert(is_leader());
     if (monmap->size() == 1) {
@@ -2787,9 +2760,8 @@ void PaxosMonitor::timecheck()
 }
 
 health_status_t PaxosMonitor::timecheck_status(ostringstream &ss,
-                                                  const double skew_bound,
-                                                  const double latency)
-{
+                                               const double skew_bound,
+                                               const double latency) {
     health_status_t status = HEALTH_OK;
     ceph_assert(latency >= 0);
 
@@ -2807,26 +2779,23 @@ health_status_t PaxosMonitor::timecheck_status(ostringstream &ss,
 // -----------------------------------------------------------
 // sync
 
-set<string> PaxosMonitor::get_sync_targets_names()
-{
+set<string> PaxosMonitor::get_sync_targets_names() {
     set<string> targets;
     targets.insert(paxos->get_name());
-    for (auto& svc : services) {
+    for (auto &svc: services) {
         svc->get_store_prefixes(targets);
     }
     return targets;
 }
 
 
-void PaxosMonitor::sync_timeout()
-{
+void PaxosMonitor::sync_timeout() {
     dout(10) << __func__ << dendl;
     ceph_assert(state == STATE_SYNCHRONIZING);
     bootstrap();
 }
 
-void PaxosMonitor::sync_obtain_latest_monmap(bufferlist &bl)
-{
+void PaxosMonitor::sync_obtain_latest_monmap(bufferlist &bl) {
     dout(1) << __func__ << dendl;
 
     MonMap latest_monmap;
@@ -2874,8 +2843,7 @@ void PaxosMonitor::sync_obtain_latest_monmap(bufferlist &bl)
     latest_monmap.encode(bl, CEPH_FEATURES_ALL);
 }
 
-void PaxosMonitor::sync_force(Formatter *f)
-{
+void PaxosMonitor::sync_force(Formatter *f) {
     auto tx(std::make_shared<MonitorDBStore::Transaction>());
     sync_stash_critical_state(tx);
     tx->put("mon_sync", "force_sync", 1);
@@ -2887,8 +2855,7 @@ void PaxosMonitor::sync_force(Formatter *f)
     f->close_section(); // sync_force
 }
 
-void PaxosMonitor::sync_reset_requester()
-{
+void PaxosMonitor::sync_reset_requester() {
     dout(10) << __func__ << dendl;
 
     if (sync_timeout_event) {
@@ -2902,14 +2869,12 @@ void PaxosMonitor::sync_reset_requester()
     sync_start_version = 0;
 }
 
-void PaxosMonitor::sync_reset_provider()
-{
+void PaxosMonitor::sync_reset_provider() {
     dout(10) << __func__ << dendl;
     sync_providers.clear();
 }
 
-void PaxosMonitor::sync_start(entity_addrvec_t &addrs, bool full)
-{
+void PaxosMonitor::sync_start(entity_addrvec_t &addrs, bool full) {
     dout(10) << __func__ << " " << addrs << (full ? " full" : " recent") << dendl;
 
     ceph_assert(state == STATE_PROBING ||
@@ -2961,8 +2926,7 @@ void PaxosMonitor::sync_start(entity_addrvec_t &addrs, bool full)
     messenger->send_to_mon(m, sync_provider);
 }
 
-void PaxosMonitor::sync_stash_critical_state(MonitorDBStore::TransactionRef t)
-{
+void PaxosMonitor::sync_stash_critical_state(MonitorDBStore::TransactionRef t) {
     dout(10) << __func__ << dendl;
     bufferlist backup_monmap;
     sync_obtain_latest_monmap(backup_monmap);
@@ -2970,8 +2934,7 @@ void PaxosMonitor::sync_stash_critical_state(MonitorDBStore::TransactionRef t)
     t->put("mon_sync", "latest_monmap", backup_monmap);
 }
 
-void PaxosMonitor::sync_reset_timeout()
-{
+void PaxosMonitor::sync_reset_timeout() {
     dout(10) << __func__ << dendl;
     if (sync_timeout_event)
         timer.cancel_event(sync_timeout_event);
@@ -2982,8 +2945,7 @@ void PaxosMonitor::sync_reset_timeout()
             }});
 }
 
-void PaxosMonitor::sync_finish(version_t last_committed)
-{
+void PaxosMonitor::sync_finish(version_t last_committed) {
     dout(10) << __func__ << " lc " << last_committed << " from " << sync_provider << dendl;
 
     ceph_assert(g_conf()->mon_sync_requester_kill_at != 7);
@@ -3021,8 +2983,7 @@ void PaxosMonitor::sync_finish(version_t last_committed)
     bootstrap();
 }
 
-void PaxosMonitor::handle_sync(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_sync(MonOpRequestRef op) {
     auto m = op->get_req<MMonSync>();
     dout(10) << __func__ << " " << *m << dendl;
     switch (m->op) {
@@ -3059,15 +3020,13 @@ void PaxosMonitor::handle_sync(MonOpRequestRef op)
 
 // leader
 
-void PaxosMonitor::_sync_reply_no_cookie(MonOpRequestRef op)
-{
+void PaxosMonitor::_sync_reply_no_cookie(MonOpRequestRef op) {
     auto m = op->get_req<MMonSync>();
     MMonSync *reply = new MMonSync(MMonSync::OP_NO_COOKIE, m->cookie);
     m->get_connection()->send_message(reply);
 }
 
-void PaxosMonitor::handle_sync_get_cookie(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_sync_get_cookie(MonOpRequestRef op) {
     auto m = op->get_req<MMonSync>();
     if (is_synchronizing()) {
         _sync_reply_no_cookie(op);
@@ -3090,12 +3049,12 @@ void PaxosMonitor::handle_sync_get_cookie(MonOpRequestRef op)
     // across restarts for the whole cluster) and a counter for this
     // process instance.  there is no need to be unique *across*
     // monitors, though.
-    uint64_t cookie = ((unsigned long long)elector.get_epoch() << 24) + ++sync_provider_count;
+    uint64_t cookie = ((unsigned long long) elector.get_epoch() << 24) + ++sync_provider_count;
     ceph_assert(sync_providers.count(cookie) == 0);
 
     dout(10) << __func__ << " cookie " << cookie << " for " << m->get_source_inst() << dendl;
 
-    SyncProvider& sp = sync_providers[cookie];
+    SyncProvider &sp = sync_providers[cookie];
     sp.cookie = cookie;
     sp.addrs = m->get_source_addrs();
     sp.reset_timeout(g_ceph_context, g_conf()->mon_sync_timeout * 2);
@@ -3119,8 +3078,7 @@ void PaxosMonitor::handle_sync_get_cookie(MonOpRequestRef op)
     m->get_connection()->send_message(reply);
 }
 
-void PaxosMonitor::handle_sync_get_chunk(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_sync_get_chunk(MonOpRequestRef op) {
     auto m = op->get_req<MMonSync>();
     dout(10) << __func__ << " " << *m << dendl;
 
@@ -3132,7 +3090,7 @@ void PaxosMonitor::handle_sync_get_chunk(MonOpRequestRef op)
 
     ceph_assert(g_conf()->mon_sync_provider_kill_at != 2);
 
-    SyncProvider& sp = sync_providers[m->cookie];
+    SyncProvider &sp = sync_providers[m->cookie];
     sp.reset_timeout(g_ceph_context, g_conf()->mon_sync_timeout * 2);
 
     if (sp.last_committed < paxos->get_first_committed() &&
@@ -3194,8 +3152,7 @@ void PaxosMonitor::handle_sync_get_chunk(MonOpRequestRef op)
 
 // requester
 
-void PaxosMonitor::handle_sync_cookie(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_sync_cookie(MonOpRequestRef op) {
     auto m = op->get_req<MMonSync>();
     dout(10) << __func__ << " " << *m << dendl;
     if (sync_cookie) {
@@ -3215,12 +3172,11 @@ void PaxosMonitor::handle_sync_cookie(MonOpRequestRef op)
     ceph_assert(g_conf()->mon_sync_requester_kill_at != 3);
 }
 
-void PaxosMonitor::sync_get_next_chunk()
-{
+void PaxosMonitor::sync_get_next_chunk() {
     dout(20) << __func__ << " cookie " << sync_cookie << " provider " << sync_provider << dendl;
     if (g_conf()->mon_inject_sync_get_chunk_delay > 0) {
         dout(20) << __func__ << " injecting delay of " << g_conf()->mon_inject_sync_get_chunk_delay << dendl;
-        usleep((long long)(g_conf()->mon_inject_sync_get_chunk_delay * 1000000.0));
+        usleep((long long) (g_conf()->mon_inject_sync_get_chunk_delay * 1000000.0));
     }
     MMonSync *r = new MMonSync(MMonSync::OP_GET_CHUNK, sync_cookie);
     messenger->send_to_mon(r, sync_provider);
@@ -3228,8 +3184,7 @@ void PaxosMonitor::sync_get_next_chunk()
     ceph_assert(g_conf()->mon_sync_requester_kill_at != 4);
 }
 
-void PaxosMonitor::handle_sync_chunk(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_sync_chunk(MonOpRequestRef op) {
     auto m = op->get_req<MMonSync>();
     dout(10) << __func__ << " " << *m << dendl;
 
@@ -3283,18 +3238,16 @@ void PaxosMonitor::handle_sync_chunk(MonOpRequestRef op)
     }
 }
 
-void PaxosMonitor::handle_sync_no_cookie(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_sync_no_cookie(MonOpRequestRef op) {
     dout(10) << __func__ << dendl;
     bootstrap();
 }
 
-void PaxosMonitor::sync_trim_providers()
-{
+void PaxosMonitor::sync_trim_providers() {
     dout(20) << __func__ << dendl;
 
     utime_t now = ceph_clock_now();
-    map<uint64_t,SyncProvider>::iterator p = sync_providers.begin();
+    map<uint64_t, SyncProvider>::iterator p = sync_providers.begin();
     while (p != sync_providers.end()) {
         if (now > p->second.timeout) {
             dout(10) << __func__ << " expiring cookie " << p->second.cookie
@@ -3309,8 +3262,7 @@ void PaxosMonitor::sync_trim_providers()
 // ---------------------------------------------------
 // probe
 
-void PaxosMonitor::cancel_probe_timeout()
-{
+void PaxosMonitor::cancel_probe_timeout() {
     if (probe_timeout_event) {
         dout(10) << "cancel_probe_timeout " << probe_timeout_event << dendl;
         timer.cancel_event(probe_timeout_event);
@@ -3320,8 +3272,7 @@ void PaxosMonitor::cancel_probe_timeout()
     }
 }
 
-void PaxosMonitor::reset_probe_timeout()
-{
+void PaxosMonitor::reset_probe_timeout() {
     cancel_probe_timeout();
     probe_timeout_event = new C_MonContext{this, [this](int r) {
         probe_timeout(r);
@@ -3335,8 +3286,7 @@ void PaxosMonitor::reset_probe_timeout()
     }
 }
 
-void PaxosMonitor::probe_timeout(int r)
-{
+void PaxosMonitor::probe_timeout(int r) {
     dout(4) << "probe_timeout " << probe_timeout_event << dendl;
     ceph_assert(is_probing() || is_synchronizing());
     ceph_assert(probe_timeout_event);
@@ -3344,8 +3294,7 @@ void PaxosMonitor::probe_timeout(int r)
     bootstrap();
 }
 
-void PaxosMonitor::handle_probe(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_probe(MonOpRequestRef op) {
     auto m = op->get_req<MMonProbe>();
     dout(10) << "handle_probe " << *m << dendl;
 
@@ -3364,8 +3313,8 @@ void PaxosMonitor::handle_probe(MonOpRequestRef op)
             break;
 
         case MMonProbe::OP_MISSING_FEATURES:
-            derr << __func__ << " require release " << (int)m->mon_release << " > "
-                 << (int)ceph_release()
+            derr << __func__ << " require release " << (int) m->mon_release << " > "
+                 << (int) ceph_release()
                  << ", or missing features (have " << CEPH_FEATURES_ALL
                  << ", required " << m->required_features
                  << ", missing " << (m->required_features & ~CEPH_FEATURES_ALL) << ")"
@@ -3374,8 +3323,7 @@ void PaxosMonitor::handle_probe(MonOpRequestRef op)
     }
 }
 
-void PaxosMonitor::handle_probe_probe(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_probe_probe(MonOpRequestRef op) {
     auto m = op->get_req<MMonProbe>();
 
     dout(10) << "handle_probe_probe " << m->get_source_inst() << " " << *m
@@ -3435,8 +3383,7 @@ void PaxosMonitor::handle_probe_probe(MonOpRequestRef op)
     return;
 }
 
-void PaxosMonitor::handle_probe_reply(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_probe_reply(MonOpRequestRef op) {
     auto m = op->get_req<MMonProbe>();
     dout(10) << "handle_probe_reply " << m->get_source_inst()
              << " " << *m << dendl;
@@ -3568,7 +3515,7 @@ void PaxosMonitor::handle_probe_reply(MonOpRequestRef op)
                  << dendl;
         bool in_map = false;
         const auto my_info = monmap->mon_info.find(name);
-        const map<string,string> *map_crush_loc{nullptr};
+        const map<string, string> *map_crush_loc{nullptr};
         if (my_info != monmap->mon_info.end()) {
             in_map = true;
             map_crush_loc = &my_info->second.crush_loc;
@@ -3614,8 +3561,7 @@ void PaxosMonitor::handle_probe_reply(MonOpRequestRef op)
 // ----------------------------------------------
 // scrub
 
-int PaxosMonitor::scrub_start()
-{
+int PaxosMonitor::scrub_start() {
     dout(10) << __func__ << dendl;
     ceph_assert(is_leader());
 
@@ -3632,8 +3578,7 @@ int PaxosMonitor::scrub_start()
     return 0;
 }
 
-int PaxosMonitor::scrub()
-{
+int PaxosMonitor::scrub() {
     ceph_assert(is_leader());
     ceph_assert(scrub_state);
 
@@ -3677,13 +3622,11 @@ int PaxosMonitor::scrub()
     return 0;
 }
 
-void PaxosMonitor::handle_scrub(MonOpRequestRef op)
-{
+void PaxosMonitor::handle_scrub(MonOpRequestRef op) {
     auto m = op->get_req<MMonScrub>();
     dout(10) << __func__ << " " << *m << dendl;
     switch (m->op) {
-        case MMonScrub::OP_SCRUB:
-        {
+        case MMonScrub::OP_SCRUB: {
             if (!is_peon())
                 break;
 
@@ -3702,8 +3645,7 @@ void PaxosMonitor::handle_scrub(MonOpRequestRef op)
         }
             break;
 
-        case MMonScrub::OP_RESULT:
-        {
+        case MMonScrub::OP_RESULT: {
             if (!is_leader())
                 break;
             if (m->version != scrub_version)
@@ -3729,9 +3671,8 @@ void PaxosMonitor::handle_scrub(MonOpRequestRef op)
 }
 
 bool PaxosMonitor::_scrub(ScrubResult *r,
-                     pair<string,string> *start,
-                     int *num_keys)
-{
+                          pair<string, string> *start,
+                          int *num_keys) {
     ceph_assert(r != NULL);
     ceph_assert(start != NULL);
     ceph_assert(num_keys != NULL);
@@ -3745,19 +3686,19 @@ bool PaxosMonitor::_scrub(ScrubResult *r,
     MonitorDBStore::Synchronizer it = store->get_synchronizer(*start, prefixes);
 
     int scrubbed_keys = 0;
-    pair<string,string> last_key;
+    pair<string, string> last_key;
 
     while (it->has_next_chunk()) {
 
         if (*num_keys > 0 && scrubbed_keys == *num_keys)
             break;
 
-        pair<string,string> k = it->get_next_key();
+        pair<string, string> k = it->get_next_key();
         if (prefixes.count(k.first) == 0)
             continue;
 
         if (cct->_conf->mon_scrub_inject_missing_keys > 0.0 &&
-            (rand() % 10000 < cct->_conf->mon_scrub_inject_missing_keys*10000.0)) {
+            (rand() % 10000 < cct->_conf->mon_scrub_inject_missing_keys * 10000.0)) {
             dout(10) << __func__ << " inject missing key, skipping (" << k << ")"
                      << dendl;
             continue;
@@ -3777,7 +3718,7 @@ bool PaxosMonitor::_scrub(ScrubResult *r,
         r->prefix_crc[k.first] = bl.crc32c(r->prefix_crc[k.first]);
 
         if (cct->_conf->mon_scrub_inject_crc_mismatch > 0.0 &&
-            (rand() % 10000 < cct->_conf->mon_scrub_inject_crc_mismatch*10000.0)) {
+            (rand() % 10000 < cct->_conf->mon_scrub_inject_crc_mismatch * 10000.0)) {
             dout(10) << __func__ << " inject failure at (" << k << ")" << dendl;
             r->prefix_crc[k.first] += 1;
         }
@@ -3796,14 +3737,13 @@ bool PaxosMonitor::_scrub(ScrubResult *r,
     return it->has_next_chunk();
 }
 
-void PaxosMonitor::scrub_check_results()
-{
+void PaxosMonitor::scrub_check_results() {
     dout(10) << __func__ << dendl;
 
     // compare
     int errors = 0;
-    ScrubResult& mine = scrub_result[rank];
-    for (map<int,ScrubResult>::iterator p = scrub_result.begin();
+    ScrubResult &mine = scrub_result[rank];
+    for (map<int, ScrubResult>::iterator p = scrub_result.begin();
          p != scrub_result.end();
          ++p) {
         if (p->first == rank)
@@ -3819,22 +3759,19 @@ void PaxosMonitor::scrub_check_results()
         clog->debug() << "scrub ok on " << quorum << ": " << mine;
 }
 
-inline void PaxosMonitor::scrub_timeout()
-{
+inline void PaxosMonitor::scrub_timeout() {
     dout(1) << __func__ << " restarting scrub" << dendl;
     scrub_reset();
     scrub_start();
 }
 
-void PaxosMonitor::scrub_finish()
-{
+void PaxosMonitor::scrub_finish() {
     dout(10) << __func__ << dendl;
     scrub_reset();
     scrub_event_start();
 }
 
-void PaxosMonitor::scrub_reset()
-{
+void PaxosMonitor::scrub_reset() {
     dout(10) << __func__ << dendl;
     scrub_cancel_timeout();
     scrub_version = 0;
@@ -3842,8 +3779,7 @@ void PaxosMonitor::scrub_reset()
     scrub_state.reset();
 }
 
-inline void PaxosMonitor::scrub_update_interval(ceph::timespan interval)
-{
+inline void PaxosMonitor::scrub_update_interval(ceph::timespan interval) {
     // we don't care about changes if we are not the leader.
     // changes will be visible if we become the leader.
     if (!is_leader())
@@ -3860,8 +3796,7 @@ inline void PaxosMonitor::scrub_update_interval(ceph::timespan interval)
     scrub_event_start();
 }
 
-void PaxosMonitor::scrub_event_start()
-{
+void PaxosMonitor::scrub_event_start() {
     dout(10) << __func__ << dendl;
 
     if (scrub_event)
@@ -3883,8 +3818,7 @@ void PaxosMonitor::scrub_event_start()
             }});
 }
 
-void PaxosMonitor::scrub_event_cancel()
-{
+void PaxosMonitor::scrub_event_cancel() {
     dout(10) << __func__ << dendl;
     if (scrub_event) {
         timer.cancel_event(scrub_event);
@@ -3892,16 +3826,14 @@ void PaxosMonitor::scrub_event_cancel()
     }
 }
 
-inline void PaxosMonitor::scrub_cancel_timeout()
-{
+inline void PaxosMonitor::scrub_cancel_timeout() {
     if (scrub_timeout_event) {
         timer.cancel_event(scrub_timeout_event);
         scrub_timeout_event = NULL;
     }
 }
 
-void PaxosMonitor::scrub_reset_timeout()
-{
+void PaxosMonitor::scrub_reset_timeout() {
     dout(15) << __func__ << " reset timeout event" << dendl;
     scrub_cancel_timeout();
     scrub_timeout_event = timer.add_event_after(
@@ -3913,11 +3845,10 @@ void PaxosMonitor::scrub_reset_timeout()
 
 int PaxosMonitor::do_admin_command(
         std::string_view command,
-        const cmdmap_t& cmdmap,
+        const cmdmap_t &cmdmap,
         Formatter *f,
-        std::ostream& err,
-        std::ostream& out)
-{
+        std::ostream &err,
+        std::ostream &out) {
     std::lock_guard l(lock);
 
     int r = 0;
@@ -3976,10 +3907,10 @@ int PaxosMonitor::do_admin_command(
         elector.stop_participating();
         out << "stopped responding to quorum, initiated new election";
     } else if (command == "ops") {
-        (void)op_tracker.dump_ops_in_flight(f);
+        (void) op_tracker.dump_ops_in_flight(f);
     } else if (command == "sessions") {
         f->open_array_section("sessions");
-        for (auto p : session_map.sessions) {
+        for (auto p: session_map.sessions) {
             f->dump_object("session", *p);
         }
         f->close_section();
@@ -3988,7 +3919,7 @@ int PaxosMonitor::do_admin_command(
             err << "op_tracker tracking is not enabled now, so no ops are tracked currently, even those get stuck. \
         please enable \"mon_enable_op_tracker\", and the tracker will start to track new ops received afterwards.";
         }
-    } else if (command == "dump_historic_ops_by_duration" ) {
+    } else if (command == "dump_historic_ops_by_duration") {
         if (op_tracker.dump_historic_ops(f, true)) {
             err << "op_tracker tracking is not enabled now, so no ops are tracked currently, even those get stuck. \
         please enable \"mon_enable_op_tracker\", and the tracker will start to track new ops received afterwards.";
@@ -4041,7 +3972,7 @@ int PaxosMonitor::do_admin_command(
         json_spirit::mObject json_map;
         uint64_t smart_timeout = cct->_conf.get_val<uint64_t>(
                 "mon_smart_report_timeout");
-        for (auto& devname : devnames) {
+        for (auto &devname: devnames) {
             string err;
             string devid = get_device_id(devname, &err);
             if (want_devid.size() && want_devid != devid) {
@@ -4107,9 +4038,8 @@ int PaxosMonitor::do_admin_command(
 }
 
 bool PaxosMonitor::_add_bootstrap_peer_hint(std::string_view cmd,
-                                       const cmdmap_t& cmdmap,
-                                       ostream& ss)
-{
+                                            const cmdmap_t &cmdmap,
+                                            ostream &ss) {
     if (is_leader() || is_peon()) {
         ss << "mon already active; ignoring bootstrap hint";
         return true;
@@ -4175,24 +4105,23 @@ MonCommand mon_commands[] = {
 #undef COMMAND
 #undef COMMAND_WITH_FLAG
 
-PaxosMonitor::PaxosMonitor(CephContext *cct_, MonitorDBStore *store, std::string nm, Messenger *m, Messenger *mgr_m,
+PaxosMonitor::PaxosMonitor(CephContext *cct_, std::string nm, MonitorDBStore *store, Messenger *m, Messenger *mgr_m,
                            MonMap *map)
         : AbstractMonitor(cct_, store, nm, m, mgr_m, map),
           elector(this, map->strategy),
           required_features(0),
           leader(0),
-          // sync state
+        // sync state
           sync_provider_count(0),
           sync_cookie(0),
           sync_full(false),
           sync_start_version(0),
           sync_timeout_event(NULL),
           sync_last_committed_floor(0),
-          // scrub
+        // scrub
           scrub_version(0),
           scrub_event(NULL),
-          scrub_timeout_event(NULL)
-{
+          scrub_timeout_event(NULL) {
 
     paxos = std::make_unique<PaxosSMR>(*this, "paxos");
 
@@ -4218,7 +4147,7 @@ PaxosMonitor::PaxosMonitor(CephContext *cct_, MonitorDBStore *store, std::string
     MonCommand::encode_vector(local_mon_commands, local_mon_commands_bl);
 
     prenautilus_local_mon_commands = local_mon_commands;
-    for (auto& i : prenautilus_local_mon_commands) {
+    for (auto &i: prenautilus_local_mon_commands) {
         std::string n = cmddesc_get_prenautilus_compat(i.cmdstring);
         if (n != i.cmdstring) {
             dout(20) << " pre-nautilus cmd " << i.cmdstring << " -> " << n << dendl;
@@ -4289,7 +4218,8 @@ int PaxosMonitor::preinit() {
         pcb.add_u64(l_cluster_num_pg_peering, "num_pg_peering", "Placement groups in peering state");
         pcb.add_u64(l_cluster_num_object, "num_object", "Objects");
         pcb.add_u64(l_cluster_num_object_degraded, "num_object_degraded", "Degraded (missing replicas) objects");
-        pcb.add_u64(l_cluster_num_object_misplaced, "num_object_misplaced", "Misplaced (wrong location in the cluster) objects");
+        pcb.add_u64(l_cluster_num_object_misplaced, "num_object_misplaced",
+                    "Misplaced (wrong location in the cluster) objects");
         pcb.add_u64(l_cluster_num_object_unfound, "num_object_unfound", "Unfound objects");
         pcb.add_u64(l_cluster_num_bytes, "num_bytes", "Size of all objects", NULL, 0, unit_t(UNIT_BYTES));
         cluster_logger = pcb.create_perf_counters();
@@ -4312,7 +4242,7 @@ int PaxosMonitor::preinit() {
 
     // have we ever joined a quorum?
     has_ever_joined = (store->get(MONITOR_NAME, "joined") != 0);
-    dout(10) << "has_ever_joined = " << (int)has_ever_joined << dendl;
+    dout(10) << "has_ever_joined = " << (int) has_ever_joined << dendl;
 
     if (!has_ever_joined) {
         // impose initial quorum restrictions?
@@ -4404,12 +4334,12 @@ int PaxosMonitor::preinit() {
     }
 
     admin_hook = new AdminHook(this);
-    AdminSocket* admin_socket = cct->get_admin_socket();
+    AdminSocket *admin_socket = cct->get_admin_socket();
 
     // unlock while registering to avoid mon_lock -> admin socket lock dependency.
     l.unlock();
     // register tell/asock commands
-    for (const auto& command : local_mon_commands) {
+    for (const auto &command: local_mon_commands) {
         if (!command.is_tell()) {
             continue;
         }
@@ -4504,7 +4434,7 @@ void PaxosMonitor::shutdown() {
 
     // clean up
     paxos->shutdown();
-    for (auto& svc : services) {
+    for (auto &svc: services) {
         svc->shutdown();
     }
 
