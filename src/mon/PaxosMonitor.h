@@ -130,6 +130,8 @@ public:
     std::map<std::string,std::string> crush_loc;
     bool need_set_crush_loc{false};
 
+    void notify_new_monmap(bool can_change_external_state = false) override;
+
 private:
     void _reset();   ///< called from bootstrap, start_, or join_election
     void wait_for_paxos_write();
@@ -560,14 +562,11 @@ public:
      */
     void tick() override;
 
+    void handle_command(MonOpRequestRef op) override;
+
     void _dispatch_op(MonOpRequestRef op) override;
 
 public:
-    static void format_command_descriptions(const std::vector<MonCommand> &commands,
-                                            ceph::Formatter *f,
-                                            uint64_t features,
-                                            ceph::buffer::list *rdata);
-
     const std::vector<MonCommand> &get_local_commands(mon_feature_t f) {
         if (f.contains_all(ceph::features::mon::FEATURE_NAUTILUS)) {
             return local_mon_commands;

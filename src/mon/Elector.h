@@ -285,7 +285,7 @@ class Elector : public ElectionOwner, RankProvider {
    * @param m A Monitor instance
    * @param strategy The election strategy to use, defined in MonMap/ElectionLogic
    */
-  explicit Elector(Monitor *m, int strategy);
+  explicit Elector(PaxosMonitor *m, int strategy);
   virtual ~Elector() {}
 
   /**

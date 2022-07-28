@@ -51,6 +51,33 @@ public:
      * @}
      */
 
+/**
+ * Retry dispatching a given service message
+ *
+ * This callback class is used when we had to wait for some condition to
+ * become true while we were dispatching it.
+ *
+ * For instance, if the message's version isn't readable, according to Paxos,
+ * then we must wait for it to become readable. So, we just queue an
+ * instance of this class onto the Paxos::wait_for_readable function, and
+ * we will retry the whole dispatch again once the callback is fired.
+ */
+class C_RetryMessage : public C_MonOp {
+    Service *svc;
+public:
+    C_RetryMessage(Service *s, MonOpRequestRef op_) :
+            C_MonOp(op_), svc(s) {}
+
+    void _finish(int r) override {
+        if (r == -EAGAIN || r >= 0)
+            svc->dispatch(op);
+        else if (r == -ECANCELED)
+            return;
+        else
+            ceph_abort_msg("bad C_RetryMessage return value");
+    }
+};
+
 protected:
 
     /**
@@ -111,32 +138,6 @@ protected:
      * @defgroup PaxosService_h_callbacks Callback classes
      * @{
      */
-    /**
-     * Retry dispatching a given service message
-     *
-     * This callback class is used when we had to wait for some condition to
-     * become true while we were dispatching it.
-     *
-     * For instance, if the message's version isn't readable, according to Paxos,
-     * then we must wait for it to become readable. So, we just queue an
-     * instance of this class onto the Paxos::wait_for_readable function, and
-     * we will retry the whole dispatch again once the callback is fired.
-     */
-    class C_RetryMessage : public C_MonOp {
-        Service *svc;
-    public:
-        C_RetryMessage(Service *s, MonOpRequestRef op_) :
-                C_MonOp(op_), svc(s) {}
-
-        void _finish(int r) override {
-            if (r == -EAGAIN || r >= 0)
-                svc->dispatch(op);
-            else if (r == -ECANCELED)
-                return;
-            else
-                ceph_abort_msg("bad C_RetryMessage return value");
-        }
-    };
 
     class C_ReplyOp : public C_MonOp {
         AbstractMonitor &mon;

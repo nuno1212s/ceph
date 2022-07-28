@@ -53,7 +53,7 @@ class FlagSetHandler : public FileSystemCommandHandler
   }
 
   int handle(
-      Monitor *mon,
+      AbstractMonitor *mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -94,7 +94,7 @@ class FailHandler : public FileSystemCommandHandler
   }
 
   int handle(
-      Monitor* mon,
+      AbstractMonitor* mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -151,7 +151,7 @@ class FsNewHandler : public FileSystemCommandHandler
   }
 
   int handle(
-      Monitor *mon,
+      AbstractMonitor *mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -265,7 +265,7 @@ class FsNewHandler : public FileSystemCommandHandler
     
     if (!mon->osdmon()->is_writeable()) {
       // not allowed to write yet, so retry when we can
-      mon->osdmon()->wait_for_writeable(op, new PaxosService::C_RetryMessage(mon->mdsmon(), op));
+      mon->osdmon()->wait_for_writeable(op, new Service::C_RetryMessage(mon->mdsmon(), op));
       return -EAGAIN;
     }
     mon->osdmon()->do_application_enable(data,
@@ -322,7 +322,7 @@ public:
   {}
 
   int handle(
-      Monitor *mon,
+      AbstractMonitor *mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -619,7 +619,7 @@ public:
       if (!allow) {
         if (!mon->osdmon()->is_writeable()) {
           // not allowed to write yet, so retry when we can
-          mon->osdmon()->wait_for_writeable(op, new PaxosService::C_RetryMessage(mon->mdsmon(), op));
+          mon->osdmon()->wait_for_writeable(op, new Service::C_RetryMessage(mon->mdsmon(), op));
           return -EAGAIN;
         }
         std::vector<mds_gid_t> to_fail;
@@ -677,7 +677,7 @@ class CompatSetHandler : public FileSystemCommandHandler
     }
 
     int handle(
-	Monitor *mon,
+	AbstractMonitor *mon,
 	FSMap &fsmap,
 	MonOpRequestRef op,
 	const cmdmap_t& cmdmap,
@@ -782,7 +782,7 @@ class RequiredClientFeaturesHandler : public FileSystemCommandHandler
     }
 
     int handle(
-	Monitor *mon,
+	AbstractMonitor *mon,
 	FSMap &fsmap,
 	MonOpRequestRef op,
 	const cmdmap_t& cmdmap,
@@ -865,7 +865,7 @@ class RequiredClientFeaturesHandler : public FileSystemCommandHandler
 class AddDataPoolHandler : public FileSystemCommandHandler
 {
   public:
-  explicit AddDataPoolHandler(Paxos *paxos)
+  explicit AddDataPoolHandler(SMRProtocol *paxos)
     : FileSystemCommandHandler("fs add_data_pool"), m_paxos(paxos)
   {}
 
@@ -874,7 +874,7 @@ class AddDataPoolHandler : public FileSystemCommandHandler
   }
 
   int handle(
-      Monitor *mon,
+      AbstractMonitor *mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -916,7 +916,7 @@ class AddDataPoolHandler : public FileSystemCommandHandler
 
     if (!mon->osdmon()->is_writeable()) {
       // not allowed to write yet, so retry when we can
-      mon->osdmon()->wait_for_writeable(op, new PaxosService::C_RetryMessage(mon->mdsmon(), op));
+      mon->osdmon()->wait_for_writeable(op, new Service::C_RetryMessage(mon->mdsmon(), op));
       return -EAGAIN;
     }
     mon->osdmon()->do_application_enable(poolid,
@@ -937,7 +937,7 @@ class AddDataPoolHandler : public FileSystemCommandHandler
   }
 
 private:
-  Paxos *m_paxos;
+  SMRProtocol *m_paxos;
 };
 
 class SetDefaultHandler : public FileSystemCommandHandler
@@ -948,7 +948,7 @@ class SetDefaultHandler : public FileSystemCommandHandler
   {}
 
   int handle(
-      Monitor *mon,
+      AbstractMonitor *mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -975,7 +975,7 @@ class RemoveFilesystemHandler : public FileSystemCommandHandler
   {}
 
   int handle(
-      Monitor *mon,
+      AbstractMonitor *mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -984,7 +984,7 @@ class RemoveFilesystemHandler : public FileSystemCommandHandler
     /* We may need to blocklist ranks. */
     if (!mon->osdmon()->is_writeable()) {
       // not allowed to write yet, so retry when we can
-      mon->osdmon()->wait_for_writeable(op, new PaxosService::C_RetryMessage(mon->mdsmon(), op));
+      mon->osdmon()->wait_for_writeable(op, new Service::C_RetryMessage(mon->mdsmon(), op));
       return -EAGAIN;
     }
 
@@ -1049,7 +1049,7 @@ class ResetFilesystemHandler : public FileSystemCommandHandler
   {}
 
   int handle(
-      Monitor *mon,
+      AbstractMonitor *mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -1089,7 +1089,7 @@ class ResetFilesystemHandler : public FileSystemCommandHandler
 class RenameFilesystemHandler : public FileSystemCommandHandler
 {
   public:
-  explicit RenameFilesystemHandler(Paxos *paxos)
+  explicit RenameFilesystemHandler(SMRProtocol *paxos)
     : FileSystemCommandHandler("fs rename"), m_paxos(paxos)
   {
   }
@@ -1099,7 +1099,7 @@ class RenameFilesystemHandler : public FileSystemCommandHandler
   }
 
   int handle(
-      Monitor *mon,
+      AbstractMonitor *mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -1150,7 +1150,7 @@ class RenameFilesystemHandler : public FileSystemCommandHandler
 
     if (!mon->osdmon()->is_writeable()) {
       // not allowed to write yet, so retry when we can
-      mon->osdmon()->wait_for_writeable(op, new PaxosService::C_RetryMessage(mon->mdsmon(), op));
+      mon->osdmon()->wait_for_writeable(op, new Service::C_RetryMessage(mon->mdsmon(), op));
       return -EAGAIN;
     }
     for (const auto p : fs->mds_map.get_data_pools()) {
@@ -1177,7 +1177,7 @@ class RenameFilesystemHandler : public FileSystemCommandHandler
   }
 
 private:
-  Paxos *m_paxos;
+  SMRProtocol *m_paxos;
 };
 
 class RemoveDataPoolHandler : public FileSystemCommandHandler
@@ -1188,7 +1188,7 @@ class RemoveDataPoolHandler : public FileSystemCommandHandler
   {}
 
   int handle(
-      Monitor *mon,
+      AbstractMonitor *mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -1263,7 +1263,7 @@ class AliasHandler : public T
   std::string const &get_prefix() const override {return alias_prefix;}
 
   int handle(
-      Monitor *mon,
+      AbstractMonitor *mon,
       FSMap& fsmap,
       MonOpRequestRef op,
       const cmdmap_t& cmdmap,
@@ -1280,7 +1280,7 @@ public:
     : FileSystemCommandHandler("fs mirror enable")
   {}
 
-  int handle(Monitor *mon,
+  int handle(AbstractMonitor *mon,
              FSMap &fsmap, MonOpRequestRef op,
              const cmdmap_t& cmdmap, std::ostream &ss) override {
     std::string fs_name;
@@ -1315,7 +1315,7 @@ public:
     : FileSystemCommandHandler("fs mirror disable")
   {}
 
-  int handle(Monitor *mon,
+  int handle(AbstractMonitor *mon,
              FSMap &fsmap, MonOpRequestRef op,
              const cmdmap_t& cmdmap, std::ostream &ss) override {
     std::string fs_name;
@@ -1397,7 +1397,7 @@ public:
     return true;
   }
 
-  int handle(Monitor *mon,
+  int handle(AbstractMonitor *mon,
              FSMap &fsmap, MonOpRequestRef op,
              const cmdmap_t& cmdmap, std::ostream &ss) override {
     std::string fs_name;
@@ -1450,7 +1450,7 @@ public:
     return true;
   }
 
-  int handle(Monitor *mon,
+  int handle(AbstractMonitor *mon,
              FSMap &fsmap, MonOpRequestRef op,
              const cmdmap_t& cmdmap, std::ostream &ss) override {
     std::string fs_name;
@@ -1480,7 +1480,7 @@ public:
 };
 
 std::list<std::shared_ptr<FileSystemCommandHandler> >
-FileSystemCommandHandler::load(Paxos *paxos)
+FileSystemCommandHandler::load(SMRProtocol *paxos)
 {
   std::list<std::shared_ptr<FileSystemCommandHandler> > handlers;
 

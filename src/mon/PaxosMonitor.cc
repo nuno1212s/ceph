@@ -515,6 +515,37 @@ void PaxosMonitor::set_elector_disallowed_leaders(bool allow_election)
     }
 }
 
+void PaxosMonitor::notify_new_monmap(bool can_change_external_state) {
+    if (need_set_crush_loc) {
+        auto my_info_i = monmap->mon_info.find(name);
+        if (my_info_i != monmap->mon_info.end() &&
+            my_info_i->second.crush_loc == crush_loc) {
+            need_set_crush_loc = false;
+        }
+    }
+
+    elector.notify_strategy_maybe_changed(monmap->strategy);
+    dout(30) << __func__ << "we have " << monmap->removed_ranks.size() << " removed ranks" << dendl;
+    for (auto i = monmap->removed_ranks.rbegin();
+         i != monmap->removed_ranks.rend(); ++i) {
+        int rank = *i;
+        dout(10) << __func__ << "removing rank " << rank << dendl;
+        elector.notify_rank_removed(rank);
+    }
+
+    if (monmap->stretch_mode_enabled) {
+        try_engage_stretch_mode();
+    }
+
+    if (is_stretch_mode()) {
+        if (!monmap->stretch_marked_down_mons.empty()) {
+            set_degraded_stretch_mode();
+        }
+    }
+
+    set_elector_disallowed_leaders(can_change_external_state);
+}
+
 // called by bootstrap(), or on leader|peon -> electing
 void PaxosMonitor::_reset()
 {
@@ -1301,6 +1332,726 @@ void PaxosMonitor::tick()
 
     mgr_client.update_daemon_health(get_health_metrics());
     new_tick();
+}
+
+void PaxosMonitor::handle_command(MonOpRequestRef op)
+{
+    ceph_assert(op->is_type_command());
+    auto m = op->get_req<MMonCommand>();
+    if (m->fsid != monmap->fsid) {
+        dout(0) << "handle_command on fsid " << m->fsid << " != " << monmap->fsid
+                << dendl;
+        reply_command(op, -EPERM, "wrong fsid", 0);
+        return;
+    }
+
+    MonSession *session = op->get_session();
+    if (!session) {
+        dout(5) << __func__ << " dropping stray message " << *m << dendl;
+        return;
+    }
+
+    if (m->cmd.empty()) {
+        reply_command(op, -EINVAL, "no command specified", 0);
+        return;
+    }
+
+    string prefix;
+    vector<string> fullcmd;
+    cmdmap_t cmdmap;
+    stringstream ss, ds;
+    bufferlist rdata;
+    string rs;
+    int r = -EINVAL;
+    rs = "unrecognized command";
+
+    if (!cmdmap_from_json(m->cmd, &cmdmap, ss)) {
+        // ss has reason for failure
+        r = -EINVAL;
+        rs = ss.str();
+        if (!m->get_source().is_mon())  // don't reply to mon->mon commands
+            reply_command(op, r, rs, 0);
+        return;
+    }
+
+    // check return value. If no prefix parameter provided,
+    // return value will be false, then return error info.
+    if (!cmd_getval(cmdmap, "prefix", prefix)) {
+        reply_command(op, -EINVAL, "command prefix not found", 0);
+        return;
+    }
+
+    // check prefix is empty
+    if (prefix.empty()) {
+        reply_command(op, -EINVAL, "command prefix must not be empty", 0);
+        return;
+    }
+
+    if (prefix == "get_command_descriptions") {
+        bufferlist rdata;
+        Formatter *f = Formatter::create("json");
+
+        std::vector<MonCommand> commands = static_cast<MgrMonitor*>(
+                services[PAXOS_MGR].get())->get_command_descs();
+
+        for (auto& c : leader_mon_commands) {
+            commands.push_back(c);
+        }
+
+        auto features = m->get_connection()->get_features();
+        format_command_descriptions(commands, f, features, &rdata);
+        delete f;
+        reply_command(op, 0, "", rdata, 0);
+        return;
+    }
+
+    dout(0) << "handle_command " << *m << dendl;
+
+    string format = cmd_getval_or<string>(cmdmap, "format", "plain");
+    boost::scoped_ptr<Formatter> f(Formatter::create(format));
+
+    get_str_vec(prefix, fullcmd);
+
+    // make sure fullcmd is not empty.
+    // invalid prefix will cause empty vector fullcmd.
+    // such as, prefix=";,,;"
+    if (fullcmd.empty()) {
+        reply_command(op, -EINVAL, "command requires a prefix to be valid", 0);
+        return;
+    }
+
+    std::string_view module = fullcmd[0];
+
+    // validate command is in leader map
+
+    const MonCommand *leader_cmd;
+    const auto& mgr_cmds = mgrmon()->get_command_descs();
+    const MonCommand *mgr_cmd = nullptr;
+    if (!mgr_cmds.empty()) {
+        mgr_cmd = _get_moncommand(prefix, mgr_cmds);
+    }
+    leader_cmd = _get_moncommand(prefix, leader_mon_commands);
+    if (!leader_cmd) {
+        leader_cmd = mgr_cmd;
+        if (!leader_cmd) {
+            reply_command(op, -EINVAL, "command not known", 0);
+            return;
+        }
+    }
+    // validate command is in our map & matches, or forward if it is allowed
+    const MonCommand *mon_cmd = _get_moncommand(
+            prefix,
+            get_local_commands(quorum_mon_features));
+    if (!mon_cmd) {
+        mon_cmd = mgr_cmd;
+    }
+    if (!is_leader()) {
+        if (!mon_cmd) {
+            if (leader_cmd->is_noforward()) {
+                reply_command(op, -EINVAL,
+                              "command not locally supported and not allowed to forward",
+                              0);
+                return;
+            }
+            dout(10) << "Command not locally supported, forwarding request "
+                     << m << dendl;
+            forward_request_leader(op);
+            return;
+        } else if (!mon_cmd->is_compat(leader_cmd)) {
+            if (mon_cmd->is_noforward()) {
+                reply_command(op, -EINVAL,
+                              "command not compatible with leader and not allowed to forward",
+                              0);
+                return;
+            }
+            dout(10) << "Command not compatible with leader, forwarding request "
+                     << m << dendl;
+            forward_request_leader(op);
+            return;
+        }
+    }
+
+    if (mon_cmd->is_obsolete() ||
+        (cct->_conf->mon_debug_deprecated_as_obsolete
+         && mon_cmd->is_deprecated())) {
+        reply_command(op, -ENOTSUP,
+                      "command is obsolete; please check usage and/or man page",
+                      0);
+        return;
+    }
+
+    if (session->proxy_con && mon_cmd->is_noforward()) {
+        dout(10) << "Got forward for noforward command " << m << dendl;
+        reply_command(op, -EINVAL, "forward for noforward command", rdata, 0);
+        return;
+    }
+
+    /* what we perceive as being the service the command falls under */
+    string service(mon_cmd->module);
+
+    dout(25) << __func__ << " prefix='" << prefix
+             << "' module='" << module
+             << "' service='" << service << "'" << dendl;
+
+    bool cmd_is_rw =
+            (mon_cmd->requires_perm('w') || mon_cmd->requires_perm('x'));
+
+    // validate user's permissions for requested command
+    map<string,string> param_str_map;
+
+    // Catch bad_cmd_get exception if _generate_command_map() throws it
+    try {
+        _generate_command_map(cmdmap, param_str_map);
+    }
+    catch(bad_cmd_get& e) {
+        reply_command(op, -EINVAL, e.what(), 0);
+    }
+
+    if (!_allowed_command(session, service, prefix, cmdmap,
+                          param_str_map, mon_cmd)) {
+        dout(1) << __func__ << " access denied" << dendl;
+        if (prefix != "config set" && prefix != "config-key set")
+            (cmd_is_rw ? audit_clog->info() : audit_clog->debug())
+                    << "from='" << session->name << " " << session->addrs << "' "
+                    << "entity='" << session->entity_name << "' "
+                    << "cmd=" << m->cmd << ":  access denied";
+        reply_command(op, -EACCES, "access denied", 0);
+        return;
+    }
+
+    if (prefix != "config set" && prefix != "config-key set")
+        (cmd_is_rw ? audit_clog->info() : audit_clog->debug())
+                << "from='" << session->name << " " << session->addrs << "' "
+                << "entity='" << session->entity_name << "' "
+                << "cmd=" << m->cmd << ": dispatch";
+
+    // compat kludge for legacy clients trying to tell commands that are
+    // new.  see bottom of MonCommands.h.  we need to handle both (1)
+    // pre-octopus clients and (2) octopus clients with a mix of pre-octopus
+    // and octopus mons.
+    if ((!HAVE_FEATURE(m->get_connection()->get_features(), SERVER_OCTOPUS) ||
+         monmap->min_mon_release < ceph_release_t::octopus) &&
+        (prefix == "injectargs" ||
+         prefix == "smart" ||
+         prefix == "mon_status" ||
+         prefix == "heap")) {
+        if (m->get_connection()->get_messenger() == 0) {
+            // Prior to octopus, monitors might forward these messages
+            // around. that was broken at baseline, and if we try to process
+            // this message now, it will assert out when we try to send a
+            // message in reply from the asok/tell worker (see
+            // AnonConnection).  Just reply with an error.
+            dout(5) << __func__ << " failing forwarded command from a (presumably) "
+                    << "pre-octopus peer" << dendl;
+            reply_command(
+                    op, -EBUSY,
+                    "failing forwarded tell command in mixed-version mon cluster", 0);
+            return;
+        }
+        dout(5) << __func__ << " passing command to tell/asok" << dendl;
+        cct->get_admin_socket()->queue_tell_command(m);
+        return;
+    }
+
+    if (mon_cmd->is_mgr()) {
+        const auto& hdr = m->get_header();
+        uint64_t size = hdr.front_len + hdr.middle_len + hdr.data_len;
+        uint64_t max = g_conf().get_val<Option::size_t>("mon_client_bytes")
+                       * g_conf().get_val<double>("mon_mgr_proxy_client_bytes_ratio");
+        if (mgr_proxy_bytes + size > max) {
+            dout(10) << __func__ << " current mgr proxy bytes " << mgr_proxy_bytes
+                     << " + " << size << " > max " << max << dendl;
+            reply_command(op, -EAGAIN, "hit limit on proxied mgr commands", rdata, 0);
+            return;
+        }
+        mgr_proxy_bytes += size;
+        dout(10) << __func__ << " proxying mgr command (+" << size
+                 << " -> " << mgr_proxy_bytes << ")" << dendl;
+        C_MgrProxyCommand *fin = new C_MgrProxyCommand(this, op, size);
+        mgr_client.start_command(m->cmd,
+                                 m->get_data(),
+                                 &fin->outbl,
+                                 &fin->outs,
+                                 new C_OnFinisher(fin, &finisher));
+        return;
+    }
+
+    if ((module == "mds" || module == "fs")  &&
+        prefix != "fs authorize") {
+        mdsmon()->dispatch(op);
+        return;
+    }
+    if ((module == "osd" ||
+         prefix == "pg map" ||
+         prefix == "pg repeer") &&
+        prefix != "osd last-stat-seq") {
+        osdmon()->dispatch(op);
+        return;
+    }
+    if (module == "config") {
+        configmon()->dispatch(op);
+        return;
+    }
+
+    if (module == "mon" &&
+        /* Let the Monitor class handle the following commands:
+         *  'mon scrub'
+         */
+        prefix != "mon scrub" &&
+        prefix != "mon metadata" &&
+        prefix != "mon versions" &&
+        prefix != "mon count-metadata" &&
+        prefix != "mon ok-to-stop" &&
+        prefix != "mon ok-to-add-offline" &&
+        prefix != "mon ok-to-rm") {
+        monmon()->dispatch(op);
+        return;
+    }
+    if (module == "health" && prefix != "health") {
+        healthmon()->dispatch(op);
+        return;
+    }
+    if (module == "auth" || prefix == "fs authorize") {
+        authmon()->dispatch(op);
+        return;
+    }
+    if (module == "log") {
+        logmon()->dispatch(op);
+        return;
+    }
+
+    if (module == "config-key") {
+        kvmon()->dispatch(op);
+        return;
+    }
+
+    if (module == "mgr") {
+        mgrmon()->dispatch(op);
+        return;
+    }
+
+    if (prefix == "fsid") {
+        if (f) {
+            f->open_object_section("fsid");
+            f->dump_stream("fsid") << monmap->fsid;
+            f->close_section();
+            f->flush(rdata);
+        } else {
+            ds << monmap->fsid;
+            rdata.append(ds);
+        }
+        reply_command(op, 0, "", rdata, 0);
+        return;
+    }
+
+    if (prefix == "mon scrub") {
+        wait_for_paxos_write();
+        if (is_leader()) {
+            int r = scrub_start();
+            reply_command(op, r, "", rdata, 0);
+        } else if (is_peon()) {
+            forward_request_leader(op);
+        } else {
+            reply_command(op, -EAGAIN, "no quorum", rdata, 0);
+        }
+        return;
+    }
+
+    if (prefix == "time-sync-status") {
+        if (!f)
+            f.reset(Formatter::create("json-pretty"));
+        f->open_object_section("time_sync");
+        if (!timecheck_skews.empty()) {
+            f->open_object_section("time_skew_status");
+            for (auto& i : timecheck_skews) {
+                double skew = i.second;
+                double latency = timecheck_latencies[i.first];
+                string name = monmap->get_name(i.first);
+                ostringstream tcss;
+                health_status_t tcstatus = timecheck_status(tcss, skew, latency);
+                f->open_object_section(name.c_str());
+                f->dump_float("skew", skew);
+                f->dump_float("latency", latency);
+                f->dump_stream("health") << tcstatus;
+                if (tcstatus != HEALTH_OK) {
+                    f->dump_stream("details") << tcss.str();
+                }
+                f->close_section();
+            }
+            f->close_section();
+        }
+        f->open_object_section("timechecks");
+        f->dump_unsigned("epoch", get_epoch());
+        f->dump_int("round", timecheck_round);
+        f->dump_stream("round_status") << ((timecheck_round%2) ?
+                                           "on-going" : "finished");
+        f->close_section();
+        f->close_section();
+        f->flush(rdata);
+        r = 0;
+        rs = "";
+    } else if (prefix == "status" ||
+               prefix == "health" ||
+               prefix == "df") {
+        string detail;
+        cmd_getval(cmdmap, "detail", detail);
+
+        if (prefix == "status") {
+            // get_cluster_status handles f == NULL
+            get_cluster_status(ds, f.get(), session);
+
+            if (f) {
+                f->flush(ds);
+                ds << '\n';
+            }
+            rdata.append(ds);
+        } else if (prefix == "health") {
+            string plain;
+            healthmon()->get_health_status(detail == "detail", f.get(), f ? nullptr : &plain);
+            if (f) {
+                f->flush(ds);
+                rdata.append(ds);
+            } else {
+                rdata.append(plain);
+            }
+        } else if (prefix == "df") {
+            bool verbose = (detail == "detail");
+            if (f)
+                f->open_object_section("stats");
+
+            mgrstatmon()->dump_cluster_stats(&ds, f.get(), verbose);
+            if (!f) {
+                ds << "\n \n";
+            }
+            mgrstatmon()->dump_pool_stats(osdmon()->osdmap, &ds, f.get(), verbose);
+
+            if (f) {
+                f->close_section();
+                f->flush(ds);
+                ds << '\n';
+            }
+        } else {
+            ceph_abort_msg("We should never get here!");
+            return;
+        }
+        rdata.append(ds);
+        rs = "";
+        r = 0;
+    } else if (prefix == "report") {
+        // some of the report data is only known by leader, e.g. osdmap_clean_epochs
+        if (!is_leader() && !is_peon()) {
+            dout(10) << " waiting for quorum" << dendl;
+            waitfor_quorum.push_back(new C_RetryMessage(this, op));
+            return;
+        }
+        if (!is_leader()) {
+            forward_request_leader(op);
+            return;
+        }
+        // this must be formatted, in its current form
+        if (!f)
+            f.reset(Formatter::create("json-pretty"));
+        f->open_object_section("report");
+        f->dump_stream("cluster_fingerprint") << fingerprint;
+        f->dump_string("version", ceph_version_to_str());
+        f->dump_string("commit", git_version_to_str());
+        f->dump_stream("timestamp") << ceph_clock_now();
+
+        vector<string> tagsvec;
+        cmd_getval(cmdmap, "tags", tagsvec);
+        string tagstr = str_join(tagsvec, " ");
+        if (!tagstr.empty())
+            tagstr = tagstr.substr(0, tagstr.find_last_of(' '));
+        f->dump_string("tag", tagstr);
+
+        healthmon()->get_health_status(true, f.get(), nullptr);
+
+        monmon()->dump_info(f.get());
+        osdmon()->dump_info(f.get());
+        mdsmon()->dump_info(f.get());
+        authmon()->dump_info(f.get());
+        mgrstatmon()->dump_info(f.get());
+        logmon()->dump_info(f.get());
+
+        paxos->dump_info(f.get());
+
+        f->close_section();
+        f->flush(rdata);
+
+        ostringstream ss2;
+        ss2 << "report " << rdata.crc32c(CEPH_MON_PORT_LEGACY);
+        rs = ss2.str();
+        r = 0;
+    } else if (prefix == "osd last-stat-seq") {
+        int64_t osd = 0;
+        cmd_getval(cmdmap, "id", osd);
+        uint64_t seq = mgrstatmon()->get_last_osd_stat_seq(osd);
+        if (f) {
+            f->dump_unsigned("seq", seq);
+            f->flush(ds);
+        } else {
+            ds << seq;
+            rdata.append(ds);
+        }
+        rs = "";
+        r = 0;
+    } else if (prefix == "node ls") {
+        string node_type("all");
+        cmd_getval(cmdmap, "type", node_type);
+        if (!f)
+            f.reset(Formatter::create("json-pretty"));
+        if (node_type == "all") {
+            f->open_object_section("nodes");
+            print_nodes(f.get(), ds);
+            osdmon()->print_nodes(f.get());
+            mdsmon()->print_nodes(f.get());
+            mgrmon()->print_nodes(f.get());
+            f->close_section();
+        } else if (node_type == "mon") {
+            print_nodes(f.get(), ds);
+        } else if (node_type == "osd") {
+            osdmon()->print_nodes(f.get());
+        } else if (node_type == "mds") {
+            mdsmon()->print_nodes(f.get());
+        } else if (node_type == "mgr") {
+            mgrmon()->print_nodes(f.get());
+        }
+        f->flush(ds);
+        rdata.append(ds);
+        rs = "";
+        r = 0;
+    } else if (prefix == "features") {
+        if (!is_leader() && !is_peon()) {
+            dout(10) << " waiting for quorum" << dendl;
+            waitfor_quorum.push_back(new C_RetryMessage(this, op));
+            return;
+        }
+        if (!is_leader()) {
+            forward_request_leader(op);
+            return;
+        }
+        if (!f)
+            f.reset(Formatter::create("json-pretty"));
+        FeatureMap fm;
+        get_combined_feature_map(&fm);
+        f->dump_object("features", fm);
+        f->flush(rdata);
+        rs = "";
+        r = 0;
+    } else if (prefix == "mon metadata") {
+        if (!f)
+            f.reset(Formatter::create("json-pretty"));
+
+        string name;
+        bool all = !cmd_getval(cmdmap, "id", name);
+        if (!all) {
+            // Dump a single mon's metadata
+            int mon = monmap->get_rank(name);
+            if (mon < 0) {
+                rs = "requested mon not found";
+                r = -ENOENT;
+                goto out;
+            }
+            f->open_object_section("mon_metadata");
+            r = get_mon_metadata(mon, f.get(), ds);
+            f->close_section();
+        } else {
+            // Dump all mons' metadata
+            r = 0;
+            f->open_array_section("mon_metadata");
+            for (unsigned int rank = 0; rank < monmap->size(); ++rank) {
+                std::ostringstream get_err;
+                f->open_object_section("mon");
+                f->dump_string("name", monmap->get_name(rank));
+                r = get_mon_metadata(rank, f.get(), get_err);
+                f->close_section();
+                if (r == -ENOENT || r == -EINVAL) {
+                    dout(1) << get_err.str() << dendl;
+                    // Drop error, list what metadata we do have
+                    r = 0;
+                } else if (r != 0) {
+                    derr << "Unexpected error from get_mon_metadata: "
+                         << cpp_strerror(r) << dendl;
+                    ds << get_err.str();
+                    break;
+                }
+            }
+            f->close_section();
+        }
+
+        f->flush(ds);
+        rdata.append(ds);
+        rs = "";
+    } else if (prefix == "mon versions") {
+        if (!f)
+            f.reset(Formatter::create("json-pretty"));
+        count_metadata("ceph_version", f.get());
+        f->flush(ds);
+        rdata.append(ds);
+        rs = "";
+        r = 0;
+    } else if (prefix == "mon count-metadata") {
+        if (!f)
+            f.reset(Formatter::create("json-pretty"));
+        string field;
+        cmd_getval(cmdmap, "property", field);
+        count_metadata(field, f.get());
+        f->flush(ds);
+        rdata.append(ds);
+        rs = "";
+        r = 0;
+    } else if (prefix == "quorum_status") {
+        // make sure our map is readable and up to date
+        if (!is_leader() && !is_peon()) {
+            dout(10) << " waiting for quorum" << dendl;
+            waitfor_quorum.push_back(new C_RetryMessage(this, op));
+            return;
+        }
+        _quorum_status(f.get(), ds);
+        rdata.append(ds);
+        rs = "";
+        r = 0;
+    } else if (prefix == "mon ok-to-stop") {
+        vector<string> ids, invalid_ids;
+        if (!cmd_getval(cmdmap, "ids", ids)) {
+            r = -EINVAL;
+            goto out;
+        }
+        set<string> wouldbe;
+        for (auto rank : quorum) {
+            wouldbe.insert(monmap->get_name(rank));
+        }
+        for (auto& n : ids) {
+            if (monmap->contains(n)) {
+                wouldbe.erase(n);
+            } else {
+                invalid_ids.push_back(n);
+            }
+        }
+        if (!invalid_ids.empty()) {
+            r = 0;
+            rs = "invalid mon(s) specified: " + stringify(invalid_ids);
+            goto out;
+        }
+
+        if (wouldbe.size() < monmap->min_quorum_size()) {
+            r = -EBUSY;
+            rs = "not enough monitors would be available (" + stringify(wouldbe) +
+                 ") after stopping mons " + stringify(ids);
+            goto out;
+        }
+        r = 0;
+        rs = "quorum should be preserved (" + stringify(wouldbe) +
+             ") after stopping " + stringify(ids);
+    } else if (prefix == "mon ok-to-add-offline") {
+        if (quorum.size() < monmap->min_quorum_size(monmap->size() + 1)) {
+            rs = "adding a monitor may break quorum (until that monitor starts)";
+            r = -EBUSY;
+            goto out;
+        }
+        rs = "adding another mon that is not yet online will not break quorum";
+        r = 0;
+    } else if (prefix == "mon ok-to-rm") {
+        string id;
+        if (!cmd_getval(cmdmap, "id", id)) {
+            r = -EINVAL;
+            rs = "must specify a monitor id";
+            goto out;
+        }
+        if (!monmap->contains(id)) {
+            r = 0;
+            rs = "mon." + id + " does not exist";
+            goto out;
+        }
+        int rank = monmap->get_rank(id);
+        if (quorum.count(rank) &&
+            quorum.size() - 1 < monmap->min_quorum_size(monmap->size() - 1)) {
+            r = -EBUSY;
+            rs = "removing mon." + id + " would break quorum";
+            goto out;
+        }
+        r = 0;
+        rs = "safe to remove mon." + id;
+    } else if (prefix == "version") {
+        if (f) {
+            f->open_object_section("version");
+            f->dump_string("version", pretty_version_to_str());
+            f->close_section();
+            f->flush(ds);
+        } else {
+            ds << pretty_version_to_str();
+        }
+        rdata.append(ds);
+        rs = "";
+        r = 0;
+    } else if (prefix == "versions") {
+        if (!f)
+            f.reset(Formatter::create("json-pretty"));
+        map<string,int> overall;
+        f->open_object_section("version");
+        map<string,int> mon, mgr, osd, mds;
+
+        count_metadata("ceph_version", &mon);
+        f->open_object_section("mon");
+        for (auto& p : mon) {
+            f->dump_int(p.first.c_str(), p.second);
+            overall[p.first] += p.second;
+        }
+        f->close_section();
+
+        mgrmon()->count_metadata("ceph_version", &mgr);
+        f->open_object_section("mgr");
+        for (auto& p : mgr) {
+            f->dump_int(p.first.c_str(), p.second);
+            overall[p.first] += p.second;
+        }
+        f->close_section();
+
+        osdmon()->count_metadata("ceph_version", &osd);
+        f->open_object_section("osd");
+        for (auto& p : osd) {
+            f->dump_int(p.first.c_str(), p.second);
+            overall[p.first] += p.second;
+        }
+        f->close_section();
+
+        mdsmon()->count_metadata("ceph_version", &mds);
+        f->open_object_section("mds");
+        for (auto& p : mds) {
+            f->dump_int(p.first.c_str(), p.second);
+            overall[p.first] += p.second;
+        }
+        f->close_section();
+
+        for (auto& p : mgrstatmon()->get_service_map().services) {
+            auto &service = p.first;
+            if (ServiceMap::is_normal_ceph_entity(service)) {
+                continue;
+            }
+            f->open_object_section(service.c_str());
+            map<string,int> m;
+            p.second.count_metadata("ceph_version", &m);
+            for (auto& q : m) {
+                f->dump_int(q.first.c_str(), q.second);
+                overall[q.first] += q.second;
+            }
+            f->close_section();
+        }
+
+        f->open_object_section("overall");
+        for (auto& p : overall) {
+            f->dump_int(p.first.c_str(), p.second);
+        }
+        f->close_section();
+        f->close_section();
+        f->flush(rdata);
+        rs = "";
+        r = 0;
+    }
+
+    out:
+    if (!m->get_source().is_mon())  // don't reply to mon->mon commands
+        reply_command(op, r, rs, rdata, 0);
 }
 
 void PaxosMonitor::_dispatch_op(MonOpRequestRef op) {
@@ -3446,7 +4197,6 @@ PaxosMonitor::PaxosMonitor(CephContext *cct_, MonitorDBStore *store, std::string
           elector(this, map->strategy),
           required_features(0),
           leader(0),
-          has_ever_joined(false),
           // sync state
           sync_provider_count(0),
           sync_cookie(0),

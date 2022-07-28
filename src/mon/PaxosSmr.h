@@ -1040,25 +1040,6 @@ private:
     void _sanity_check_store();
 
     /**
-     * Helper function to decode a ceph::buffer::list into a transaction and append it
-     * to another transaction.
-     *
-     * This function is used during the Leader's commit and during the
-     * Paxos::store_state in order to apply the ceph::buffer::list's transaction onto
-     * the store.
-     *
-     * @param t The transaction to which we will append the operations
-     * @param bl A ceph::buffer::list containing an encoded transaction
-     */
-    static void decode_append_transaction(MonitorDBStore::TransactionRef t,
-                                          ceph::buffer::list &bl) {
-        auto vt(std::make_shared<MonitorDBStore::Transaction>());
-        auto it = bl.cbegin();
-        vt->decode(it);
-        t->append(vt);
-    }
-
-    /**
      * @todo This appears to be used only by the OSDMonitor, and I would say
      *	   its objective is to allow a third-party to have a "private"
      *	   state dir. -JL
@@ -1102,16 +1083,16 @@ private:
         return true;
     }
 
-    bool is_plugged() const {
+    bool is_plugged() const override {
         return plugged;
     }
 
-    void plug() {
+    void plug() override {
         ceph_assert(plugged == false);
         plugged = true;
     }
 
-    void unplug() {
+    void unplug() override {
         ceph_assert(plugged == true);
         plugged = false;
     }

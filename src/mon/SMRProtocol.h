@@ -1,7 +1,6 @@
 #ifndef CEPH_SMRPROTOCOL_H
 #define CEPH_SMRPROTOCOL_H
 
-#include <stdlib.h>
 #include "MonOpRequest.h"
 #include "MonitorDBStore.h"
 #include "AbstractMonitor.h"
@@ -100,6 +99,15 @@ public:
         MonOpRequestRef o;
         wait_for_writeable(o, c);
     }
+
+    /**
+     * Helper methods to for plugged.
+     */
+    virtual bool is_plugged() const  = 0;
+
+    virtual void plug() = 0;
+
+    virtual void unplug() = 0;
 
     /**
      * Queue a completion for the pending proposal
@@ -231,6 +239,25 @@ public:
      * Cancel all of Paxos' timeout/renew events.
      */
     virtual void cancel_events() = 0;
+
+    /**
+     * Helper function to decode a ceph::buffer::list into a transaction and append it
+     * to another transaction.
+     *
+     * This function is used during the Leader's commit and during the
+     * Paxos::store_state in order to apply the ceph::buffer::list's transaction onto
+     * the store.
+     *
+     * @param t The transaction to which we will append the operations
+     * @param bl A ceph::buffer::list containing an encoded transaction
+     */
+    static void decode_append_transaction(MonitorDBStore::TransactionRef t,
+                                          ceph::buffer::list &bl) {
+        auto vt(std::make_shared<MonitorDBStore::Transaction>());
+        auto it = bl.cbegin();
+        vt->decode(it);
+        t->append(vt);
+    }
 
     /**
  * Combine two keys to generate a new key that can be searched in the service store

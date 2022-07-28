@@ -2,16 +2,13 @@ set(lib_mon_srcs
   ${CMAKE_SOURCE_DIR}/src/auth/cephx/CephxKeyServer.cc
   ${CMAKE_SOURCE_DIR}/src/auth/cephx/CephxServiceHandler.cc
   ${CMAKE_SOURCE_DIR}/src/auth/AuthServiceHandler.cc
-  Paxos.cc
-  PaxosService.cc
-  OSDMonitor.cc
+        OSDMonitor.cc
   MDSMonitor.cc
   CommandHandler.cc
   FSCommands.cc
   MgrMonitor.cc
   MgrStatMonitor.cc
-  Monitor.cc
-  MonmapMonitor.cc
+        MonmapMonitor.cc
   LogMonitor.cc
   AuthMonitor.cc
   ConfigMap.cc

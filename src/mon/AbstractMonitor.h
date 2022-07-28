@@ -100,7 +100,9 @@ public:
     bool cluster_logger_registered;
 
     void register_cluster_logger();
+
     void update_logger();
+
     void unregister_cluster_logger();
 
     LogClient log_client;
@@ -125,6 +127,7 @@ public:
     void handle_ping(MonOpRequestRef op);
 
     void _apply_compatset_features(CompatSet &new_features);
+
 protected:
 
     /*
@@ -142,7 +145,7 @@ protected:
 
     // map of counts of connected clients, by type and features, for
     // each quorum mon
-    std::map<int,FeatureMap> quorum_feature_map;
+    std::map<int, FeatureMap> quorum_feature_map;
 
     /**
      * Intersection of quorum member's connection feature bits.
@@ -171,11 +174,11 @@ public:
         return get_leader() == rank;
     }
 
-    virtual void forward_request_leader(MonOpRequestRef op) =0;
+    virtual void forward_request_leader(MonOpRequestRef op) = 0;
 
     virtual std::string get_leader_name() = 0;
 
-    const std::set<int>& get_quorum() const { return quorum; }
+    const std::set<int> &get_quorum() const { return quorum; }
 
     std::list<std::string> get_quorum_names() {
         std::list<std::string> q;
@@ -201,7 +204,9 @@ public:
     }
 
     void apply_quorum_to_compatset_features();
+
     void apply_monmap_to_compatset_features();
+
     void calc_quorum_requirements();
 
     void get_combined_feature_map(FeatureMap *fm);
@@ -217,7 +222,7 @@ public:
     AdminSocketHook *admin_hook;
 
     template<typename Func, typename...Args>
-    void with_session_map(Func&& func) {
+    void with_session_map(Func &&func) {
         std::lock_guard l(session_map_lock);
         std::forward<Func>(func)(session_map);
     }
@@ -226,31 +231,35 @@ public:
 
     // messages
     virtual void handle_get_version(MonOpRequestRef op) = 0;
+
     void handle_subscribe(MonOpRequestRef op);
+
     void handle_mon_get_map(MonOpRequestRef op);
 
     /**
      * @}
      */
 
-    static void _generate_command_map(cmdmap_t& cmdmap,
-                                      std::map<std::string,std::string> &param_str_map);
+    static void _generate_command_map(cmdmap_t &cmdmap,
+                                      std::map<std::string, std::string> &param_str_map);
 
     static const MonCommand *_get_moncommand(
             const std::string &cmd_prefix,
-            const std::vector<MonCommand>& cmds);
+            const std::vector<MonCommand> &cmds);
 
-    bool _allowed_command(MonSession *s, const std::string& module,
-                          const std::string& prefix,
-                          const cmdmap_t& cmdmap,
-                          const std::map<std::string,std::string>& param_str_map,
+    bool _allowed_command(MonSession *s, const std::string &module,
+                          const std::string &prefix,
+                          const cmdmap_t &cmdmap,
+                          const std::map<std::string, std::string> &param_str_map,
                           const MonCommand *this_cmd);
 
 
     virtual void get_mon_status(ceph::Formatter *f) = 0;
-    virtual void _quorum_status(ceph::Formatter *f, std::ostream& ss) = 0;
+
+    virtual void _quorum_status(ceph::Formatter *f, std::ostream &ss) = 0;
 
     void handle_tell_command(MonOpRequestRef op);
+
     void handle_route(MonOpRequestRef op);
 
     //We want each monitor type to handle its commands separately as
@@ -258,8 +267,9 @@ public:
     //can execute the commands on any given monitor
     virtual void handle_command(MonOpRequestRef op) = 0;
 
-    int get_mon_metadata(int mon, ceph::Formatter *f, std::ostream& err);
-    int print_nodes(ceph::Formatter *f, std::ostream& err);
+    int get_mon_metadata(int mon, ceph::Formatter *f, std::ostream &err);
+
+    int print_nodes(ceph::Formatter *f, std::ostream &err);
 
     // track metadata reported by win_election()
     std::map<int, Metadata> mon_metadata;
@@ -284,22 +294,28 @@ public:
     Context *health_interval_event = nullptr;
 
     void health_tick_start();
+
     void health_tick_stop();
+
     ceph::real_clock::time_point health_interval_calc_next_update();
+
     void health_interval_start();
+
     void health_interval_stop();
+
     void health_events_cleanup();
 
     void health_to_clog_update_conf(const std::set<std::string> &changed);
 
     void do_health_to_clog_interval();
+
     void do_health_to_clog(bool force = false);
 
     std::vector<DaemonHealthMetric> get_health_metrics();
 
     void log_health(
-            const health_check_map_t& updated,
-            const health_check_map_t& previous,
+            const health_check_map_t &updated,
+            const health_check_map_t &previous,
             MonitorDBStore::TransactionRef t);
 
     void update_pending_metadata();
@@ -311,14 +327,15 @@ protected:
         health_status_t severity;
         std::string last_message;
         utime_t updated_at = 0;
+
         HealthCheckLogStatus(health_status_t severity_,
                              const std::string &last_message_,
                              utime_t updated_at_)
                 : severity(severity_),
                   last_message(last_message_),
-                  updated_at(updated_at_)
-        {}
+                  updated_at(updated_at_) {}
     };
+
     std::map<std::string, HealthCheckLogStatus> health_check_log_times;
 
 public:
@@ -327,7 +344,8 @@ public:
                             MonSession *session);
 
     void reply_command(MonOpRequestRef op, int rc, const std::string &rs, version_t version);
-    void reply_command(MonOpRequestRef op, int rc, const std::string &rs, ceph::buffer::list& rdata, version_t version);
+
+    void reply_command(MonOpRequestRef op, int rc, const std::string &rs, ceph::buffer::list &rdata, version_t version);
 
     void reply_tell_command(MonOpRequestRef op, int rc, const std::string &rs);
 
@@ -341,20 +359,31 @@ public:
         MonOpRequestRef op;
 
         RoutedRequest() : tid(0), session(NULL), con_features(0) {}
+
         ~RoutedRequest() {
             if (session)
                 session->put();
         }
     };
+
     uint64_t routed_request_tid;
-    std::map<uint64_t, RoutedRequest*> routed_requests;
+    std::map<uint64_t, RoutedRequest *> routed_requests;
 
     void send_reply(MonOpRequestRef op, Message *reply);
+
     void no_reply(MonOpRequestRef op);
+
     void remove_session(MonSession *s);
+
     void remove_all_sessions();
 
     void send_mon_message(Message *m, int rank);
+
+    /**
+     * can_change_external_state if we can do things like
+     *  call elections as a result of the new map.
+     */
+    virtual void notify_new_monmap(bool can_change_external_state = false) = 0;
 
 public:
     struct C_Command : public C_MonOp {
@@ -363,10 +392,12 @@ public:
         std::string rs;
         ceph::buffer::list rdata;
         version_t version;
+
         C_Command(AbstractMonitor &_mm, MonOpRequestRef _op, int r, std::string s, version_t v) :
-                C_MonOp(_op), mon(_mm), rc(r), rs(s), version(v){}
+                C_MonOp(_op), mon(_mm), rc(r), rs(s), version(v) {}
+
         C_Command(AbstractMonitor &_mm, MonOpRequestRef _op, int r, std::string s, ceph::buffer::list rd, version_t v) :
-                C_MonOp(_op), mon(_mm), rc(r), rs(s), rdata(rd), version(v){}
+                C_MonOp(_op), mon(_mm), rc(r), rs(s), rdata(rd), version(v) {}
 
         void _finish(int r) override {
             auto m = op->get_req<MMonCommand>();
@@ -395,8 +426,7 @@ public:
 
                 mon.audit_clog->info() << ss.str();
                 mon.reply_command(op, rc, rs, rdata, version);
-            }
-            else if (r == -ECANCELED)
+            } else if (r == -ECANCELED)
                 return;
             else if (r == -EAGAIN)
                 mon.dispatch_op(op);
@@ -405,12 +435,12 @@ public:
         }
     };
 
-protected:
+public:
     class C_RetryMessage : public C_MonOp {
         AbstractMonitor *mon;
     public:
         C_RetryMessage(AbstractMonitor *m, MonOpRequestRef op) :
-                C_MonOp(op), mon(m) { }
+                C_MonOp(op), mon(m) {}
 
         void _finish(int r) override {
             if (r == -EAGAIN || r >= 0)
@@ -421,6 +451,8 @@ protected:
                 ceph_abort_msg("bad C_RetryMessage return value");
         }
     };
+
+protected:
 
     //ms_dispatch handles a lot of logic and we want to reuse it
     //on forwarded messages, so we create a non-locking version for this class
@@ -438,13 +470,19 @@ protected:
 
     //mon_caps is used for un-connected messages from monitors
     MonCap mon_caps;
+
     bool get_authorizer(int dest_type, AuthAuthorizer **authorizer);
+
 public: // for AuthMonitor msgr1:
     int ms_handle_authentication(Connection *con) override;
+
 protected:
     void ms_handle_accept(Connection *con) override;
+
     bool ms_handle_reset(Connection *con) override;
+
     void ms_handle_remote_reset(Connection *con) override {}
+
     bool ms_handle_refused(Connection *con) override;
 
     /**
@@ -458,26 +496,29 @@ protected:
             uint32_t *method,
             std::vector<uint32_t> *preferred_modes,
             ceph::buffer::list *out) override;
+
     int handle_auth_reply_more(
             Connection *con,
             AuthConnectionMeta *auth_meta,
-            const ceph::buffer::list& bl,
+            const ceph::buffer::list &bl,
             ceph::buffer::list *reply) override;
+
     int handle_auth_done(
             Connection *con,
             AuthConnectionMeta *auth_meta,
             uint64_t global_id,
             uint32_t con_mode,
-            const ceph::buffer::list& bl,
+            const ceph::buffer::list &bl,
             CryptoKey *session_key,
             std::string *connection_secret) override;
+
     int handle_auth_bad_method(
             Connection *con,
             AuthConnectionMeta *auth_meta,
             uint32_t old_auth_method,
             int result,
-            const std::vector<uint32_t>& allowed_methods,
-            const std::vector<uint32_t>& allowed_modes) override;
+            const std::vector<uint32_t> &allowed_methods,
+            const std::vector<uint32_t> &allowed_modes) override;
 
     /**
      * @} Auth Client
@@ -489,49 +530,64 @@ protected:
             AuthConnectionMeta *auth_meta,
             bool more,
             uint32_t auth_method,
-            const ceph::buffer::list& bl,
+            const ceph::buffer::list &bl,
             ceph::buffer::list *reply) override;
     // /AuthServer
 
-    int write_default_keyring(ceph::buffer::list& bl);
-    void extract_save_mon_key(KeyRing& keyring);
+    int write_default_keyring(ceph::buffer::list &bl);
+
+    void extract_save_mon_key(KeyRing &keyring);
 
     void collect_metadata(Metadata *m);
+
     int load_metadata();
-    void count_metadata(const std::string& field, ceph::Formatter *f);
-    void count_metadata(const std::string& field, std::map<std::string,int> *out);
+
+    void count_metadata(const std::string &field, ceph::Formatter *f);
+
+    void count_metadata(const std::string &field, std::map<std::string, int> *out);
+
     // get_all_versions() gathers version information from daemons for health check
     void get_all_versions(std::map<std::string, std::list<std::string>> &versions);
-    void get_versions(std::map<std::string, std::list<std::string>> &versions);
 
-    // features
-    static CompatSet get_initial_supported_features();
-    static CompatSet get_supported_features();
-    static CompatSet get_legacy_features();
+    void get_versions(std::map<std::string, std::list<std::string>> &versions);
 
     /// read the ondisk features into the CompatSet pointed to by read_features
     static void read_features_off_disk(MonitorDBStore *store, CompatSet *read_features);
+
     void read_features();
+
     void write_features(MonitorDBStore::TransactionRef t);
 
     OpTracker op_tracker;
 
 public:
-    AbstractMonitor(CephContext* cct_, MonitorDBStore *store, std::string nm, Messenger *m, Messenger *mgr_m, MonMap *map);
+    // features
+    static CompatSet get_initial_supported_features();
+
+    static CompatSet get_supported_features();
+
+    static CompatSet get_legacy_features();
+
+public:
+    AbstractMonitor(CephContext *cct_, MonitorDBStore *store, std::string nm, Messenger *m, Messenger *mgr_m,
+                    MonMap *map);
 
     ~AbstractMonitor() override;
 
     void update_log_clients();
+
     int sanitize_options();
 
     static int check_features(MonitorDBStore *store);
 
     // config observer
-    const char** get_tracked_conf_keys() const override;
-    void handle_conf_change(const ConfigProxy& conf,
+    const char **get_tracked_conf_keys() const override;
+
+    void handle_conf_change(const ConfigProxy &conf,
                             const std::set<std::string> &changed) override;
 
     virtual int preinit() = 0;
+
     virtual int init() = 0;
 
 protected:
@@ -540,12 +596,14 @@ protected:
 
 public:
     virtual void shutdown() = 0;
+
     virtual bool is_shutdown() const = 0;
+
     virtual void tick() = 0;
 
     void handle_signal(int sig);
 
-    int mkfs(ceph::buffer::list& osdmapbl);
+    int mkfs(ceph::buffer::list &osdmapbl);
 
     /**
      * check cluster_fsid file
@@ -563,10 +621,15 @@ public:
 
     int write_fsid(MonitorDBStore::TransactionRef t);
 
-    virtual int do_admin_command(std::string_view command, const cmdmap_t& cmdmap,
-                         ceph::Formatter *f,
-                         std::ostream& err,
-                         std::ostream& out) = 0;
+    virtual int do_admin_command(std::string_view command, const cmdmap_t &cmdmap,
+                                 ceph::Formatter *f,
+                                 std::ostream &err,
+                                 std::ostream &out) = 0;
+
+    static void format_command_descriptions(const std::vector<MonCommand> &commands,
+                                            ceph::Formatter *f,
+                                            uint64_t features,
+                                            ceph::buffer::list *rdata);
 
     bool is_keyring_required();
 
@@ -582,43 +645,43 @@ public:
     std::array<std::unique_ptr<Service>, PAXOS_NUM> services;
 
     class MDSMonitor *mdsmon() {
-        return (class MDSMonitor *)services[PAXOS_MDSMAP].get();
+        return (class MDSMonitor *) services[PAXOS_MDSMAP].get();
     }
 
     class MonmapMonitor *monmon() {
-        return (class MonmapMonitor *)services[PAXOS_MONMAP].get();
+        return (class MonmapMonitor *) services[PAXOS_MONMAP].get();
     }
 
     class OSDMonitor *osdmon() {
-        return (class OSDMonitor *)services[PAXOS_OSDMAP].get();
+        return (class OSDMonitor *) services[PAXOS_OSDMAP].get();
     }
 
     class AuthMonitor *authmon() {
-        return (class AuthMonitor *)services[PAXOS_AUTH].get();
+        return (class AuthMonitor *) services[PAXOS_AUTH].get();
     }
 
     class LogMonitor *logmon() {
-        return (class LogMonitor*) services[PAXOS_LOG].get();
+        return (class LogMonitor *) services[PAXOS_LOG].get();
     }
 
     class MgrMonitor *mgrmon() {
-        return (class MgrMonitor*) services[PAXOS_MGR].get();
+        return (class MgrMonitor *) services[PAXOS_MGR].get();
     }
 
     class MgrStatMonitor *mgrstatmon() {
-        return (class MgrStatMonitor*) services[PAXOS_MGRSTAT].get();
+        return (class MgrStatMonitor *) services[PAXOS_MGRSTAT].get();
     }
 
     class HealthMonitor *healthmon() {
-        return (class HealthMonitor*) services[PAXOS_HEALTH].get();
+        return (class HealthMonitor *) services[PAXOS_HEALTH].get();
     }
 
     class ConfigMonitor *configmon() {
-        return (class ConfigMonitor*) services[PAXOS_CONFIG].get();
+        return (class ConfigMonitor *) services[PAXOS_CONFIG].get();
     }
 
     class KVMonitor *kvmon() {
-        return (class KVMonitor*) services[PAXOS_KV].get();
+        return (class KVMonitor *) services[PAXOS_KV].get();
     }
 
     /**
@@ -626,15 +689,20 @@ public:
      */
 
     friend class OSDMonitor;
+
     friend class MDSMonitor;
+
     friend class MonmapMonitor;
+
     friend class LogMonitor;
+
     friend class KVMonitor;
 
 protected:
     // don't allow copying
-    AbstractMonitor(const AbstractMonitor& rhs);
-    AbstractMonitor& operator=(const AbstractMonitor &rhs);
+    AbstractMonitor(const AbstractMonitor &rhs);
+
+    AbstractMonitor &operator=(const AbstractMonitor &rhs);
 
 };
 
@@ -669,27 +737,29 @@ protected:
 template<typename T>
 class C_MonContext : public LambdaContext<T> {
 public:
-    C_MonContext(const AbstractMonitor* m, T&& f) :
+    C_MonContext(const AbstractMonitor *m, T &&f) :
             LambdaContext<T>(std::forward<T>(f)),
-            mon(m)
-    {}
+            mon(m) {}
+
     void finish(int r) override {
         if (mon->is_shutdown())
             return;
         LambdaContext<T>::finish(r);
     }
+
 protected:
-    const AbstractMonitor* mon;
+    const AbstractMonitor *mon;
 };
 
 class AdminHook : public AdminSocketHook {
     AbstractMonitor *mon;
 public:
     explicit AdminHook(AbstractMonitor *m) : mon(m) {}
-    int call(std::string_view command, const cmdmap_t& cmdmap,
+
+    int call(std::string_view command, const cmdmap_t &cmdmap,
              Formatter *f,
-             std::ostream& errss,
-             bufferlist& out) override {
+             std::ostream &errss,
+             bufferlist &out) override {
         stringstream outss;
         int r = mon->do_admin_command(command, cmdmap, f, errss, outss);
         out.append(outss);

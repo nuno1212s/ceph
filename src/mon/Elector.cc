@@ -21,6 +21,7 @@
 
 #include "common/config.h"
 #include "include/ceph_assert.h"
+#include "PaxosMonitor.h"
 
 #define dout_subsys ceph_subsys_mon
 #undef dout_prefix
@@ -68,38 +69,37 @@ Elector::Elector(PaxosMonitor *m, int strategy) : logic(this, static_cast<Electi
 			       PING_DIVISOR(m->cct->_conf.get_val<uint64_t>("mon_elector_ping_divisor")),
 			       mon(m), elector(this) {
   bufferlist bl;
-  mon->store->get(Monitor::MONITOR_NAME, "connectivity_scores", bl);
+  mon->store->get(AbstractMonitor::MONITOR_NAME, "connectivity_scores", bl);
   if (bl.length()) {
     bufferlist::const_iterator bi = bl.begin();
     peer_tracker.decode(bi);
   }
 }
 
-
 void Elector::persist_epoch(epoch_t e)
 {
   auto t(std::make_shared<MonitorDBStore::Transaction>());
-  t->put(Monitor::MONITOR_NAME, "election_epoch", e);
-  t->put(Monitor::MONITOR_NAME, "connectivity_scores", peer_tracker.get_encoded_bl());
+  t->put(AbstractMonitor::MONITOR_NAME, "election_epoch", e);
+  t->put(AbstractMonitor::MONITOR_NAME, "connectivity_scores", peer_tracker.get_encoded_bl());
   mon->store->apply_transaction(t);
 }
 
 void Elector::persist_connectivity_scores()
 {
   auto t(std::make_shared<MonitorDBStore::Transaction>());
-  t->put(Monitor::MONITOR_NAME, "connectivity_scores", peer_tracker.get_encoded_bl());
+  t->put(AbstractMonitor::MONITOR_NAME, "connectivity_scores", peer_tracker.get_encoded_bl());
   mon->store->apply_transaction(t);
 }
 
 epoch_t Elector::read_persisted_epoch() const
 {
-  return mon->store->get(Monitor::MONITOR_NAME, "election_epoch");
+  return mon->store->get(AbstractMonitor::MONITOR_NAME, "election_epoch");
 }
 
 void Elector::validate_store()
 {
   auto t(std::make_shared<MonitorDBStore::Transaction>());
-  t->put(Monitor::MONITOR_NAME, "election_writeable_test", rand());
+  t->put(AbstractMonitor::MONITOR_NAME, "election_writeable_test", rand());
   int r = mon->store->apply_transaction(t);
   ceph_assert(r >= 0);
 }
@@ -435,7 +435,7 @@ void Elector::handle_nak(MonOpRequestRef op)
     CompatSet other;
     auto bi = m->sharing_bl.cbegin();
     other.decode(bi);
-    CompatSet diff = Monitor::get_supported_features().unsupported(other);
+    CompatSet diff = AbstractMonitor::get_supported_features().unsupported(other);
 
     mon_feature_t mon_supported = ceph::features::mon::get_supported();
     // all features in 'm->mon_features' not in 'mon_supported'

@@ -144,7 +144,8 @@ AbstractMonitor::AbstractMonitor(CephContext *cct_, MonitorDBStore *store, strin
           //sessions
           admin_hook(NULL),
           routed_request_tid(0),
-          op_tracker(cct, g_conf().get_val<bool>("mon_enable_op_tracker"), 1)
+          op_tracker(cct, g_conf().get_val<bool>("mon_enable_op_tracker"), 1),
+          has_ever_joined(false)
 {
     clog = log_client.create_channel(CLOG_CHANNEL_CLUSTER);
     audit_clog = log_client.create_channel(CLOG_CHANNEL_AUDIT);
@@ -1200,6 +1201,26 @@ int AbstractMonitor::check_fsid()
     }
 
     return 0;
+}
+
+void AbstractMonitor::format_command_descriptions(const std::vector<MonCommand> &commands,
+                                                  ceph::Formatter *f,
+                                                  uint64_t features,
+                                                  ceph::buffer::list *rdata) {
+    int cmdnum = 0;
+    f->open_object_section("command_descriptions");
+    for (const auto &cmd : commands) {
+        unsigned flags = cmd.flags;
+        ostringstream secname;
+        secname << "cmd" << setfill('0') << std::setw(3) << cmdnum;
+        dump_cmddesc_to_json(f, features, secname.str(),
+                             cmd.cmdstring, cmd.helpstring, cmd.module,
+                             cmd.req_perms, flags);
+        cmdnum++;
+    }
+    f->close_section();	// command_descriptions
+
+    f->flush(*rdata);
 }
 
 int AbstractMonitor::write_fsid()

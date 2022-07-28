@@ -16,7 +16,6 @@
 #ifndef FS_COMMANDS_H_
 #define FS_COMMANDS_H_
 
-#include "Monitor.h"
 #include "CommandHandler.h"
 
 #include "osd/OSDMap.h"
@@ -77,14 +76,14 @@ public:
     return is_op_allowed(op, fsmap, cmdmap, ss);
   }
 
-  static std::list<std::shared_ptr<FileSystemCommandHandler> > load(Paxos *paxos);
+  static std::list<std::shared_ptr<FileSystemCommandHandler> > load(SMRProtocol *paxos);
 
   virtual bool batched_propose() {
     return false;
   }
 
   virtual int handle(
-    Monitor *mon,
+    AbstractMonitor *mon,
     FSMap &fsmap,
     MonOpRequestRef op,
     const cmdmap_t& cmdmap,
