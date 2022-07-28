@@ -10,6 +10,13 @@
 #include "include/stringify.h"
 #include "common/Timer.h"
 #include "messages/PaxosServiceMessage.h"
+#include "common/ceph_argparse.h"
+#include "common/errno.h"
+#include "common/config.h"
+#include "common/cmdparse.h"
+
+#include "include/ceph_assert.h"
+#include "include/stringify.h"
 
 
 using std::string;
@@ -20,11 +27,24 @@ using ceph::Formatter;
 using ceph::JSONFormatter;
 using ceph::to_timespan;
 
+#define dout_subsys ceph_subsys_mon
+#undef dout_prefix
+#define dout_prefix _prefix(_dout, mon, mon.name, mon.rank, paxos_name, state, first_committed, last_committed)
+static std::ostream& _prefix(std::ostream *_dout, PaxosMonitor &mon, const string& name,
+                             int rank, const string& paxos_name, int state,
+                             version_t first_committed, version_t last_committed)
+{
+    return *_dout << "mon." << name << "@" << rank
+                  << "(" << mon.get_state_name() << ")"
+                  << ".paxos(" << paxos_name << " " << PaxosSMR::get_statename(state)
+                  << " c " << first_committed << ".." << last_committed
+                  << ") ";
+}
 
-class Paxos::C_Trimmed : public Context {
-    Paxos *paxos;
+class PaxosSMR::C_Trimmed : public Context {
+    PaxosSMR *paxos;
 public:
-    explicit C_Trimmed(Paxos *p) : paxos(p) {}
+    explicit C_Trimmed(PaxosSMR *p) : paxos(p) {}
 
     void finish(int r) override {
         paxos->trimming = false;

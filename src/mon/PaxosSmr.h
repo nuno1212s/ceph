@@ -6,6 +6,43 @@
 
 class PaxosSMR : public SMRProtocol {
 
+    enum {
+        l_paxos_first = 45800,
+        l_paxos_start_leader,
+        l_paxos_start_peon,
+        l_paxos_restart,
+        l_paxos_refresh,
+        l_paxos_refresh_latency,
+        l_paxos_begin,
+        l_paxos_begin_keys,
+        l_paxos_begin_bytes,
+        l_paxos_begin_latency,
+        l_paxos_commit,
+        l_paxos_commit_keys,
+        l_paxos_commit_bytes,
+        l_paxos_commit_latency,
+        l_paxos_collect,
+        l_paxos_collect_keys,
+        l_paxos_collect_bytes,
+        l_paxos_collect_latency,
+        l_paxos_collect_uncommitted,
+        l_paxos_collect_timeout,
+        l_paxos_accept_timeout,
+        l_paxos_lease_ack_timeout,
+        l_paxos_lease_timeout,
+        l_paxos_store_state,
+        l_paxos_store_state_keys,
+        l_paxos_store_state_bytes,
+        l_paxos_store_state_latency,
+        l_paxos_share_state,
+        l_paxos_share_state_keys,
+        l_paxos_share_state_bytes,
+        l_paxos_new_pn,
+        l_paxos_new_pn_latency,
+        l_paxos_last,
+    };
+
+
 public:
     /**
      * @defgroup Paxos_h_states States on which the leader/peon may be.
@@ -43,6 +80,37 @@ public:
         STATE_SHUTDOWN
     };
 
+    /**
+     * Obtain state name from constant value.
+     *
+     * @note This function will raise a fatal error if @p s is not
+     *	   a valid state value.
+     *
+     * @param s State value.
+     * @return The state's name.
+     */
+    static const std::string get_statename(int s) {
+        switch (s) {
+            case STATE_RECOVERING:
+                return "recovering";
+            case STATE_ACTIVE:
+                return "active";
+            case STATE_UPDATING:
+                return "updating";
+            case STATE_UPDATING_PREVIOUS:
+                return "updating-previous";
+            case STATE_WRITING:
+                return "writing";
+            case STATE_WRITING_PREVIOUS:
+                return "writing-previous";
+            case STATE_REFRESH:
+                return "refresh";
+            case STATE_SHUTDOWN:
+                return "shutdown";
+            default:
+                return "UNKNOWN";
+        }
+    }
 
 private:
     /**
@@ -532,6 +600,10 @@ public:
     void read_and_prepare_transactions(MonitorDBStore::TransactionRef tx, version_t first, version_t last) override;
 
     void dispatch(MonOpRequestRef op) override;
+
+    utime_t last_commit_time() override {
+        return last_commit_time;
+    }
 
     version_t get_first_committed() override {
         return first_committed;

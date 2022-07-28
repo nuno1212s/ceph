@@ -1,6 +1,4 @@
 #include "PaxosMonitor.h"
-
-
 #include <iterator>
 #include <sstream>
 #include <tuple>
@@ -83,6 +81,7 @@
 #define dout_subsys ceph_subsys_mon
 #undef dout_prefix
 #define dout_prefix _prefix(_dout, this)
+
 using namespace TOPNSPC::common;
 
 using std::cout;
@@ -113,6 +112,12 @@ using ceph::make_message;
 using ceph::mono_clock;
 using ceph::mono_time;
 using ceph::timespan_str;
+
+static ostream& _prefix(std::ostream *_dout, PaxosMonitor *mon) {
+    return *_dout << "mon." << mon->name << "@" << mon->rank
+                  << "(" << mon->get_state_name()
+                  << ").monmap v" << mon->monmap->epoch << " ";
+}
 
 void PaxosMonitor::_quorum_status(Formatter *f, ostream &ss) {
     bool free_formatter = false;
@@ -4154,27 +4159,6 @@ bool PaxosMonitor::_add_bootstrap_peer_hint(std::string_view cmd,
     extra_probe_peers.insert(addrs);
     ss << "adding peer " << addrs << " to list: " << extra_probe_peers;
     return true;
-}
-
-void PaxosMonitor::format_command_descriptions(const std::vector<MonCommand> &commands,
-                                          Formatter *f,
-                                          uint64_t features,
-                                          bufferlist *rdata)
-{
-    int cmdnum = 0;
-    f->open_object_section("command_descriptions");
-    for (const auto &cmd : commands) {
-        unsigned flags = cmd.flags;
-        ostringstream secname;
-        secname << "cmd" << setfill('0') << std::setw(3) << cmdnum;
-        dump_cmddesc_to_json(f, features, secname.str(),
-                             cmd.cmdstring, cmd.helpstring, cmd.module,
-                             cmd.req_perms, flags);
-        cmdnum++;
-    }
-    f->close_section();	// command_descriptions
-
-    f->flush(*rdata);
 }
 
 #undef FLAG

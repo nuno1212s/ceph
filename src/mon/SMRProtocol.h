@@ -129,6 +129,12 @@ public:
     virtual void dispatch(MonOpRequestRef op) = 0;
 
     /**
+     * Get the time of the last consensus iteration made by the SMR protocol
+     * @return
+     */
+    virtual utime_t last_commit_time() = 0;
+
+    /**
      * Get first committed version
      *
      * @return the first committed version

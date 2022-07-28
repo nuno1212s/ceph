@@ -1,5 +1,25 @@
 #include "Service.h"
+#include "common/Clock.h"
+#include "common/config.h"
+#include "include/stringify.h"
+#include "include/ceph_assert.h"
+#include "mon/MonOpRequest.h"
 
+using std::ostream;
+using std::string;
+
+using ceph::bufferlist;
+
+#define dout_subsys ceph_subsys_paxos
+#undef dout_prefix
+#define dout_prefix _prefix(_dout, mon, paxos, service_name, get_first_committed(), get_last_committed())
+
+static ostream& _prefix(std::ostream *_dout, AbstractMonitor &mon, SMRProtocol &paxos, string service_name,
+                        version_t fc, version_t lc) {
+    return *_dout << "mon." << mon.name << "@" << mon.rank
+                  << "(" << mon.get_state_name()
+                  << ").paxosservice(" << service_name << " " << fc << ".." << lc << ") ";
+}
 
 void Service::load_health() {
     bufferlist bl;
@@ -147,7 +167,7 @@ bool Service::should_propose(double &delay) {
         delay = 0.0;
     } else {
         utime_t now = ceph_clock_now();
-        if ((now - paxos.last_commit_time) > g_conf()->paxos_propose_interval)
+        if ((now - smr_protocol.last_commit_time()) > g_conf()->paxos_propose_interval)
             delay = (double) g_conf()->paxos_min_wait;
         else
             delay = (double) (g_conf()->paxos_propose_interval + paxos.last_commit_time
