@@ -21,7 +21,7 @@
 
 #include <stdio.h>
 #include <signal.h>
-#include "mon/Monitor.h"
+#include "mon/AbstractMonitor.h"
 #include "common/ceph_argparse.h"
 #include "global/global_init.h"
 
@@ -47,7 +47,7 @@ static void json_print(const std::vector<MonCommand> &mon_commands)
 {
   bufferlist rdata;
   Formatter *f = Formatter::create("json");
-  Monitor::format_command_descriptions(mon_commands, f,
+  AbstractMonitor::format_command_descriptions(mon_commands, f,
                                        CEPH_FEATURES_ALL, &rdata);
   delete f;
   string data(rdata.c_str(), rdata.length());
