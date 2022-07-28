@@ -83,15 +83,14 @@ public:
     Finisher finisher;
     ThreadPool cpu_tp;  ///< threadpool for CPU intensive work
 
+    /// true if we have ever joined a quorum.  if false, we are either a
+    /// new cluster, a newly joining monitor, or a just-upgraded
+    /// monitor.
+    bool has_ever_joined;
+
     ceph::mutex auth_lock = ceph::make_mutex("Monitor::auth_lock");
 
-    /*
-     * We still use a monitor DB store, but only for some of the needed
-     * Features of a monitor.
-     * In the case of Paxos, this will still be used as before, but with febft
-     * This store will not be used for the SMR protocol, as febft has it's own way of storing things
-     */
-    MonitorDBStore *store;
+public:
     MonMap *monmap;
     uuid_d fingerprint;
 
@@ -127,6 +126,15 @@ public:
 
     void _apply_compatset_features(CompatSet &new_features);
 protected:
+
+    /*
+     * We still use a monitor DB store, but only for some of the needed
+     * Features of a monitor.
+     * In the case of Paxos, this will still be used as before, but with febft
+     * This store will not be used for the SMR protocol, as febft has it's own way of storing things
+     */
+    MonitorDBStore *store;
+
     /// features we require of peers (based on on-disk compatset)
     uint64_t required_features;
 
@@ -150,6 +158,22 @@ protected:
     std::set<std::string> outside_quorum;
 
 public:
+
+    virtual std::string get_state_name() const = 0;
+
+    void prepare_new_fingerprint(MonitorDBStore::TransactionRef t);
+
+    virtual epoch_t get_epoch() = 0;
+
+    virtual int get_leader() const = 0;
+
+    bool is_leader() {
+        return get_leader() == rank;
+    }
+
+    virtual void forward_request_leader(MonOpRequestRef op) =0;
+
+    virtual std::string get_leader_name() = 0;
 
     const std::set<int>& get_quorum() const { return quorum; }
 
@@ -492,18 +516,6 @@ protected:
 
     OpTracker op_tracker;
 
-    /**
-     * @defgroup Services
-     *
-     * {@
-     */
-
-    //TODO
-
-    /**
-     * @}
-     */
-
 public:
     AbstractMonitor(CephContext* cct_, MonitorDBStore *store, std::string nm, Messenger *m, Messenger *mgr_m, MonMap *map);
 
@@ -521,8 +533,14 @@ public:
 
     virtual int preinit() = 0;
     virtual int init() = 0;
+
+protected:
+    //Schedule the ticks
+    void new_tick();
+
+public:
     virtual void shutdown() = 0;
-    virtual const bool is_shutdown() = 0;
+    virtual bool is_shutdown() const = 0;
     virtual void tick() = 0;
 
     void handle_signal(int sig);
@@ -552,6 +570,11 @@ public:
 
     bool is_keyring_required();
 
+    /**
+     * @defgroup Services
+     *
+     * {@
+     */
 
     /**
      * Vector holding the Services serviced by this Monitor.
@@ -597,6 +620,10 @@ public:
     class KVMonitor *kvmon() {
         return (class KVMonitor*) services[PAXOS_KV].get();
     }
+
+    /**
+     * @}
+     */
 
     friend class OSDMonitor;
     friend class MDSMonitor;
@@ -653,6 +680,21 @@ public:
     }
 protected:
     const AbstractMonitor* mon;
+};
+
+class AdminHook : public AdminSocketHook {
+    AbstractMonitor *mon;
+public:
+    explicit AdminHook(AbstractMonitor *m) : mon(m) {}
+    int call(std::string_view command, const cmdmap_t& cmdmap,
+             Formatter *f,
+             std::ostream& errss,
+             bufferlist& out) override {
+        stringstream outss;
+        int r = mon->do_admin_command(command, cmdmap, f, errss, outss);
+        out.append(outss);
+        return r;
+    }
 };
 
 #endif //CEPH_ABSTRACTMONITOR_H

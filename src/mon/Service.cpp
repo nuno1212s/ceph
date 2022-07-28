@@ -409,17 +409,31 @@ void Service::trim(MonitorDBStore::TransactionRef t,
         dout(20) << __func__ << " " << v << dendl;
         t->erase(get_service_name(), v);
 
-        string full_key = mon.store->combine_strings("full", v);
-        if (mon.store->exists(get_service_name(), full_key)) {
+        std::string full_key = smr_protocol.combine_strings("full", v);
+        if (smr_protocol.exists(get_service_name(), full_key)) {
             dout(20) << __func__ << " " << full_key << dendl;
             t->erase(get_service_name(), full_key);
         }
     }
+
     if (g_conf()->mon_compact_on_trim) {
         dout(20) << " compacting prefix " << get_service_name() << dendl;
         t->compact_range(get_service_name(), stringify(from - 1), stringify(to));
         t->compact_range(get_service_name(),
-                         mon.store->combine_strings(full_prefix_name, from - 1),
-                         mon.store->combine_strings(full_prefix_name, to));
+                         smr_protocol.combine_strings(full_prefix_name, from - 1),
+                         smr_protocol.combine_strings(full_prefix_name, to));
     }
+}
+
+bool Service::should_stash_full()
+{
+    version_t latest_full = get_version_latest_full();
+    /* @note The first member of the condition is moot and it is here just for
+     *	   clarity's sake. The second member would end up returing true
+     *	   nonetheless because, in that event,
+     *	      latest_full == get_trim_to() == 0.
+     */
+    return (!latest_full ||
+            (latest_full <= get_trim_to()) ||
+            (get_last_committed() - latest_full > (version_t)g_conf()->paxos_stash_full_interval));
 }

@@ -202,6 +202,14 @@ public:
                                                 const std::string &key) = 0;
 
     /**
+     * Check if a given entry exists in the SMR store
+     * @param service_name
+     * @param key
+     * @return
+     */
+    virtual bool exists_in_service(const std::string &service_name, const std::string &key) = 0;
+
+    /**
      * Get a transaction to submit operations to propose against
      *
      * Apply operations to this transaction.

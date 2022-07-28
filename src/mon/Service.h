@@ -1,7 +1,6 @@
 #ifndef CEPH_SERVICE_H
 #define CEPH_SERVICE_H
 
-#include "Monitor.h"
 #include "AbstractMonitor.h"
 #include "SMRProtocol.h"
 
@@ -400,7 +399,7 @@ public:
      *		       spamming.
      * @returns 'true' if the Paxos system should propose; 'false' otherwise.
      */
-    bool should_propose(double &delay);
+    virtual bool should_propose(double &delay);
 
     /**
      * force an immediate propose.
@@ -461,6 +460,10 @@ public:
      * Tick.
      */
     virtual void tick() {}
+
+    const health_check_map_t& get_health_checks() const {
+        return health_checks;
+    }
 
     void encode_health(const health_check_map_t& next,
                        MonitorDBStore::TransactionRef t) {
@@ -821,7 +824,7 @@ public:
 
 
     /**
-     * @defgroup PaxosService_h_Trim Functions for trimming states
+     * @defgroup Service_h_Trim Functions for trimming states
      * @{
      */
     /**
@@ -861,6 +864,29 @@ public:
     virtual version_t get_trim_to() const {
         return 0;
     }
+
+    /**
+     * @}
+     */
+
+    /**
+ * @defgroup Service_h_Stash_Full
+ * @{
+ */
+    virtual bool should_stash_full();
+    /**
+     * Encode a full version on @p t
+     *
+     * @note We force every service to implement this function, since we strongly
+     *	   desire the encoding of full versions.
+     * @note Services that do not trim their state, will be bound to only create
+     *	   one full version. Full version stashing is determined/controlled by
+     *	   trimming: we stash a version each time a trim is bound to erase the
+     *	   latest full version.
+     *
+     * @param t Transaction on which the full version shall be encoded.
+     */
+    virtual void encode_full(MonitorDBStore::TransactionRef t) = 0;
 
     /**
      * @}

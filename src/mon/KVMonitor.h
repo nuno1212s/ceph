@@ -5,13 +5,13 @@
 
 #include <optional>
 
-#include "mon/PaxosService.h"
+#include "Service.h"
 
 class MonSession;
 
 extern const std::string KV_PREFIX;
 
-class KVMonitor : public PaxosService
+class KVMonitor : public Service
 {
   version_t version = 0;
   std::map<std::string,std::optional<ceph::buffer::list>> pending;
@@ -19,7 +19,7 @@ class KVMonitor : public PaxosService
   bool _have_prefix(const std::string &prefix);
 
 public:
-  KVMonitor(Monitor &m, Paxos &p, const std::string& service_name);
+  KVMonitor(AbstractMonitor &m, SMRProtocol &p, const std::string& service_name);
 
   void init() override;
 
@@ -32,7 +32,7 @@ public:
   bool prepare_update(MonOpRequestRef op) override;
 
   void create_initial() override;
-  void update_from_paxos(bool *need_bootstrap) override;
+  void update_from_smr(bool *need_bootstrap) override;
   void create_pending() override;
   void encode_pending(MonitorDBStore::TransactionRef t) override;
   version_t get_trim_to() const override;

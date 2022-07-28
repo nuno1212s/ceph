@@ -23,7 +23,6 @@
 #include <sstream>
 
 #include "mon/OSDMonitor.h"
-#include "mon/Monitor.h"
 #include "mon/MDSMonitor.h"
 #include "mon/MgrStatMonitor.h"
 #include "mon/AuthMonitor.h"
@@ -457,10 +456,10 @@ static ostream& _prefix(std::ostream *_dout, Monitor &mon, const OSDMap& osdmap)
 
 OSDMonitor::OSDMonitor(
   CephContext *cct,
-  Monitor &mn,
-  Paxos &p,
+  AbstractMonitor &mn,
+  SMRProtocol &p,
   const string& service_name)
- : PaxosService(mn, p, service_name),
+ : Service(mn, p, service_name),
    cct(cct),
    inc_osd_cache(g_conf()->mon_osd_cache_size),
    full_osd_cache(g_conf()->mon_osd_cache_size),
@@ -710,7 +709,7 @@ void OSDMonitor::get_store_prefixes(std::set<string>& s) const
   s.insert(OSD_SNAP_PREFIX);
 }
 
-void OSDMonitor::update_from_paxos(bool *need_bootstrap)
+void OSDMonitor::update_from_smr(bool *need_bootstrap)
 {
   // we really don't care if the version has been updated, because we may
   // have trimmed without having increased the last committed; yet, we may
@@ -952,6 +951,7 @@ void OSDMonitor::update_from_paxos(bool *need_bootstrap)
     // will be called by on_active() on the leader, avoid doing so twice
     start_mapping();
   }
+
   if (osdmap.stretch_mode_enabled) {
     dout(20) << "Stretch mode enabled in this map" << dendl;
     mon.try_engage_stretch_mode();

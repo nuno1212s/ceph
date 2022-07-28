@@ -1,7 +1,6 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 
-#include "mon/Monitor.h"
 #include "mon/KVMonitor.h"
 #include "include/stringify.h"
 #include "messages/MKVData.h"
@@ -16,7 +15,7 @@ using std::set;
 using std::string;
 using std::stringstream;
 
-static ostream& _prefix(std::ostream *_dout, const Monitor &mon,
+static ostream& _prefix(std::ostream *_dout, const AbstractMonitor &mon,
                         const KVMonitor *hmon) {
   return *_dout << "mon." << mon.name << "@" << mon.rank
 		<< "(" << mon.get_state_name() << ").kv ";
@@ -39,8 +38,8 @@ static bool is_binary_string(const string& s)
 }
 
 
-KVMonitor::KVMonitor(Monitor &m, Paxos &p, const string& service_name)
-  : PaxosService(m, p, service_name) {
+KVMonitor::KVMonitor(AbstractMonitor &m, SMRProtocol &p, const string& service_name)
+  : Service(m, p, service_name) {
 }
 
 void KVMonitor::init()
@@ -55,7 +54,7 @@ void KVMonitor::create_initial()
   pending.clear();
 }
 
-void KVMonitor::update_from_paxos(bool *need_bootstrap)
+void KVMonitor::update_from_smr(bool *need_bootstrap)
 {
   if (version == get_last_committed()) {
     return;
@@ -322,7 +321,7 @@ update:
   force_immediate_propose();  // faster response
   wait_for_finished_proposal(
     op,
-    new Monitor::C_Command(
+    new AbstractMonitor::C_Command(
       mon, op, 0, ss.str(), odata,
       get_last_committed() + 1));
   return true;
@@ -415,6 +414,7 @@ void KVMonitor::do_osd_new(
   const uuid_d& uuid,
   const string& dmcrypt_key)
 {
+    //TODO
   ceph_assert(paxos.is_plugged());
 
   string dmcrypt_key_prefix = _get_dmcrypt_prefix(uuid, "luks");

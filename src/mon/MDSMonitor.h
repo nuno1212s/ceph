@@ -23,24 +23,24 @@
 
 #include "include/types.h"
 #include "PaxosFSMap.h"
-#include "PaxosService.h"
+#include "Service.h"
 #include "msg/Messenger.h"
 #include "messages/MMDSBeacon.h"
 #include "CommandHandler.h"
 
 class FileSystemCommandHandler;
 
-class MDSMonitor : public PaxosService, public PaxosFSMap, protected CommandHandler {
+class MDSMonitor : public Service, public PaxosFSMap, protected CommandHandler {
  public:
   using clock = ceph::coarse_mono_clock;
   using time = ceph::coarse_mono_time;
 
-  MDSMonitor(Monitor &mn, Paxos &p, std::string service_name);
+  MDSMonitor(AbstractMonitor &mn, SMRProtocol &p, std::string service_name);
 
   // service methods
   void create_initial() override;
   void get_store_prefixes(std::set<std::string>& s) const override;
-  void update_from_paxos(bool *need_bootstrap) override;
+  void update_from_smr(bool *need_bootstrap) override;
   void init() override;
   void create_pending() override;
   void encode_pending(MonitorDBStore::TransactionRef t) override;

@@ -18,7 +18,6 @@
 
 #include "MDSMonitor.h"
 #include "FSCommands.h"
-#include "Monitor.h"
 #include "MonitorDBStore.h"
 #include "OSDMonitor.h"
 
@@ -70,7 +69,7 @@ using ceph::mono_time;
 #define dout_subsys ceph_subsys_mon
 #undef dout_prefix
 #define dout_prefix _prefix(_dout, mon, get_fsmap())
-static ostream& _prefix(std::ostream *_dout, Monitor &mon, const FSMap& fsmap) {
+static ostream& _prefix(std::ostream *_dout, AbstractMonitor &mon, const FSMap& fsmap) {
   return *_dout << "mon." << mon.name << "@" << mon.rank
 		<< "(" << mon.get_state_name()
 		<< ").mds e" << fsmap.get_epoch() << " ";
@@ -126,7 +125,7 @@ void MDSMonitor::get_store_prefixes(std::set<string>& s) const
   s.insert(MDS_HEALTH_PREFIX);
 }
 
-void MDSMonitor::update_from_paxos(bool *need_bootstrap)
+void MDSMonitor::update_from_smr(bool *need_bootstrap)
 {
   version_t version = get_last_committed();
   if (version == get_fsmap().epoch)
@@ -2378,9 +2377,10 @@ void MDSMonitor::tick()
   last_tick = mono_clock::now();
 }
 
-MDSMonitor::MDSMonitor(Monitor &mn, Paxos &p, string service_name)
-  : PaxosService(mn, p, service_name)
+MDSMonitor::MDSMonitor(AbstractMonitor &mn, SMRProtocol &p, string service_name)
+  : Service(mn, p, service_name)
 {
+    //TODO: Fix this
   handlers = FileSystemCommandHandler::load(&p);
 }
 

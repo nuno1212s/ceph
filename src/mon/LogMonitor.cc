@@ -46,7 +46,6 @@
 #include <syslog.h>
 
 #include "LogMonitor.h"
-#include "Monitor.h"
 #include "MonitorDBStore.h"
 
 #include "messages/MMonCommand.h"
@@ -265,7 +264,7 @@ void LogMonitor::create_initial()
   pending_log.insert(pair<utime_t,LogEntry>(e.stamp, e));
 }
 
-void LogMonitor::update_from_paxos(bool *need_bootstrap)
+void LogMonitor::update_from_smr(bool *need_bootstrap)
 {
   dout(10) << __func__ << dendl;
   version_t version = get_last_committed();

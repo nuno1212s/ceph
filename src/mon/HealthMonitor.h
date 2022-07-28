@@ -14,9 +14,9 @@
 #ifndef CEPH_HEALTH_MONITOR_H
 #define CEPH_HEALTH_MONITOR_H
 
-#include "mon/PaxosService.h"
+#include "Service.h"
 
-class HealthMonitor : public PaxosService
+class HealthMonitor : public Service
 {
   version_t version = 0;
   std::map<int,health_check_map_t> quorum_checks;  // for each quorum member
@@ -26,7 +26,7 @@ class HealthMonitor : public PaxosService
   std::map<std::string,health_mute_t> pending_mutes;
 
 public:
-  HealthMonitor(Monitor &m, Paxos &p, const std::string& service_name);
+  HealthMonitor(AbstractMonitor &m, SMRProtocol &p, const std::string& service_name);
 
   /**
    * @defgroup HealthMonitor_Inherited_h Inherited abstract methods
@@ -38,7 +38,7 @@ public:
   bool prepare_update(MonOpRequestRef op) override;
 
   void create_initial() override;
-  void update_from_paxos(bool *need_bootstrap) override;
+  void update_from_smr(bool *need_bootstrap) override;
   void create_pending() override;
   void encode_pending(MonitorDBStore::TransactionRef t) override;
   version_t get_trim_to() const override;

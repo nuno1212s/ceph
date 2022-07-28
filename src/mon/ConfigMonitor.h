@@ -6,11 +6,11 @@
 #include <optional>
 
 #include "ConfigMap.h"
-#include "mon/PaxosService.h"
+#include "Service.h"
 
 class MonSession;
 
-class ConfigMonitor : public PaxosService
+class ConfigMonitor : public Service
 {
   version_t version = 0;
   ConfigMap config_map;
@@ -23,7 +23,7 @@ class ConfigMonitor : public PaxosService
   void encode_pending_to_kvmon();
 
 public:
-  ConfigMonitor(Monitor &m, Paxos &p, const std::string& service_name);
+  ConfigMonitor(AbstractMonitor &m, SMRProtocol &p, const std::string& service_name);
 
   void init() override;
 
@@ -39,7 +39,7 @@ public:
   void handle_get_config(MonOpRequestRef op);
 
   void create_initial() override;
-  void update_from_paxos(bool *need_bootstrap) override;
+  void update_from_smr(bool *need_bootstrap) override;
   void create_pending() override;
   void encode_pending(MonitorDBStore::TransactionRef t) override;
   version_t get_trim_to() const override;

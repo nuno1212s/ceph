@@ -1556,3 +1556,7 @@ version_t PaxosSMR::read_current_from_service(const string &service_name, const 
     return get_store()->get(service_name, key);
 }
 
+bool PaxosSMR::exists_in_service(const string &service_name, const string &key) {
+    return get_store()->exists(service_name, key);
+}
+

@@ -23,7 +23,6 @@
 #include "include/common_fwd.h"
 #include "include/stringify.h"
 
-#include "mon/Monitor.h"
 #include "mon/HealthMonitor.h"
 
 #include "messages/MMonHealthChecks.h"
@@ -69,8 +68,8 @@ static ostream& _prefix(std::ostream *_dout, const Monitor &mon,
 		<< "(" << mon.get_state_name() << ").health ";
 }
 
-HealthMonitor::HealthMonitor(Monitor &m, Paxos &p, const string& service_name)
-  : PaxosService(m, p, service_name) {
+HealthMonitor::HealthMonitor(AbstractMonitor &m, SMRProtocol &p, const string& service_name)
+  : Service(m, p, service_name) {
 }
 
 void HealthMonitor::init()
@@ -83,14 +82,14 @@ void HealthMonitor::create_initial()
   dout(10) << __func__ << dendl;
 }
 
-void HealthMonitor::update_from_paxos(bool *need_bootstrap)
+void HealthMonitor::update_from_smr(bool *need_bootstrap)
 {
   version = get_last_committed();
   dout(10) << __func__ << dendl;
   load_health();
 
   bufferlist qbl;
-  mon.store->get(service_name, "quorum", qbl);
+  smr_protocol.read_version_from_service(service_name, "quorum", qbl);
   if (qbl.length()) {
     auto p = qbl.cbegin();
     decode(quorum_checks, p);
@@ -99,7 +98,7 @@ void HealthMonitor::update_from_paxos(bool *need_bootstrap)
   }
 
   bufferlist lbl;
-  mon.store->get(service_name, "leader", lbl);
+  smr_protocol.read_version_from_service(service_name, "leader", lbl);
   if (lbl.length()) {
     auto p = lbl.cbegin();
     decode(leader_checks, p);
@@ -109,7 +108,7 @@ void HealthMonitor::update_from_paxos(bool *need_bootstrap)
 
   {
     bufferlist bl;
-    mon.store->get(service_name, "mutes", bl);
+    smr_protocol.read_version_from_service(service_name, "mutes", bl);
     if (bl.length()) {
       auto p = bl.cbegin();
       decode(mutes, p);
@@ -350,7 +349,7 @@ out:
 
   if (r >= 0) {
     // success.. delay reply
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, r, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, r, rs,
 					      get_last_committed() + 1));
     return true;
   } else {
@@ -453,7 +452,7 @@ bool HealthMonitor::check_mutes()
 
 void HealthMonitor::gather_all_health_checks(health_check_map_t *all)
 {
-  for (auto& svc : mon.paxos_service) {
+  for (auto& svc : mon.services) {
     all->merge(svc->get_health_checks());
   }
 }
@@ -819,36 +818,37 @@ void HealthMonitor::check_for_mon_down(health_check_map_t *checks)
 
 void HealthMonitor::check_for_clock_skew(health_check_map_t *checks)
 {
-  if (!mon.timecheck_skews.empty()) {
-    list<string> warns;
-    list<string> details;
-    for (auto& i : mon.timecheck_skews) {
-      double skew = i.second;
-      double latency = mon.timecheck_latencies[i.first];
-      string name = mon.monmap->get_name(i.first);
-      ostringstream tcss;
-      health_status_t tcstatus = mon.timecheck_status(tcss, skew, latency);
-      if (tcstatus != HEALTH_OK) {
-	warns.push_back(name);
-	ostringstream tmp_ss;
-	tmp_ss << "mon." << name << " " << tcss.str()
-	       << " (latency " << latency << "s)";
-	details.push_back(tmp_ss.str());
-      }
-    }
-    if (!warns.empty()) {
-      ostringstream ss;
-      ss << "clock skew detected on";
-      while (!warns.empty()) {
-	ss << " mon." << warns.front();
-	warns.pop_front();
-	if (!warns.empty())
-	  ss << ",";
-      }
-      auto& d = checks->add("MON_CLOCK_SKEW", HEALTH_WARN, ss.str(), details.size());
-      d.detail.swap(details);
-    }
-  }
+    //TODO
+        if (!mon.timecheck_skews.empty()) {
+            list<string> warns;
+            list<string> details;
+            for (auto &i: mon.timecheck_skews) {
+                double skew = i.second;
+                double latency = mon.timecheck_latencies[i.first];
+                string name = mon.monmap->get_name(i.first);
+                ostringstream tcss;
+                health_status_t tcstatus = mon.timecheck_status(tcss, skew, latency);
+                if (tcstatus != HEALTH_OK) {
+                    warns.push_back(name);
+                    ostringstream tmp_ss;
+                    tmp_ss << "mon." << name << " " << tcss.str()
+                           << " (latency " << latency << "s)";
+                    details.push_back(tmp_ss.str());
+                }
+            }
+            if (!warns.empty()) {
+                ostringstream ss;
+                ss << "clock skew detected on";
+                while (!warns.empty()) {
+                    ss << " mon." << warns.front();
+                    warns.pop_front();
+                    if (!warns.empty())
+                        ss << ",";
+                }
+                auto &d = checks->add("MON_CLOCK_SKEW", HEALTH_WARN, ss.str(), details.size());
+                d.detail.swap(details);
+            }
+        }
 }
 
 void HealthMonitor::check_if_msgr2_enabled(health_check_map_t *checks)

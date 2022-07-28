@@ -239,16 +239,6 @@ const utime_t& PaxosMonitor::get_leader_since() const
     return leader_since;
 }
 
-void PaxosMonitor::prepare_new_fingerprint(MonitorDBStore::TransactionRef t)
-{
-    uuid_d nf;
-    nf.generate_random();
-    dout(10) << __func__ << " proposing cluster_fingerprint " << nf << dendl;
-
-    bufferlist bl;
-    encode(nf, bl);
-    t->put(MONITOR_NAME, "cluster_fingerprint", bl);
-}
 
 struct CMonEnableStretchMode : public Context {
     PaxosMonitor *m;
@@ -1209,6 +1199,108 @@ void PaxosMonitor::waitlist_or_zap_client(MonOpRequestRef op) {
         }
         op->mark_zap();
     }
+}
+
+void PaxosMonitor::tick()
+{
+    // ok go.
+    dout(11) << "tick" << dendl;
+    const utime_t now = ceph_clock_now();
+
+    // Check if we need to emit any delayed health check updated messages
+    if (is_leader()) {
+        const auto min_period = g_conf().get_val<int64_t>(
+                "mon_health_log_update_period");
+        for (auto& svc : services) {
+            auto health = svc->get_health_checks();
+
+            for (const auto &i : health.checks) {
+                const std::string &code = i.first;
+                const std::string &summary = i.second.summary;
+                const health_status_t severity = i.second.severity;
+
+                auto status_iter = health_check_log_times.find(code);
+                if (status_iter == health_check_log_times.end()) {
+                    continue;
+                }
+
+                auto &log_status = status_iter->second;
+                bool const changed = log_status.last_message != summary
+                                     || log_status.severity != severity;
+
+                if (changed && now - log_status.updated_at > min_period) {
+                    log_status.last_message = summary;
+                    log_status.updated_at = now;
+                    log_status.severity = severity;
+
+                    ostringstream ss;
+                    ss << "Health check update: " << summary << " (" << code << ")";
+                    clog->health(severity) << ss.str();
+                }
+            }
+        }
+    }
+
+    for (auto& svc : services) {
+        svc->tick();
+        svc->maybe_trim();
+    }
+
+    // trim sessions
+    {
+        std::lock_guard l(session_map_lock);
+        auto p = session_map.sessions.begin();
+
+        bool out_for_too_long = (!exited_quorum.is_zero() &&
+                                 now > (exited_quorum + 2*g_conf()->mon_lease));
+
+        while (!p.end()) {
+            MonSession *s = *p;
+            ++p;
+
+            // don't trim monitors
+            if (s->name.is_mon())
+                continue;
+
+            if (s->session_timeout < now && s->con) {
+                // check keepalive, too
+                s->session_timeout = s->con->get_last_keepalive();
+                s->session_timeout += g_conf()->mon_session_timeout;
+            }
+            if (s->session_timeout < now) {
+                dout(10) << " trimming session " << s->con << " " << s->name
+                         << " " << s->addrs
+                         << " (timeout " << s->session_timeout
+                         << " < now " << now << ")" << dendl;
+            } else if (out_for_too_long) {
+                // boot the client Session because we've taken too long getting back in
+                dout(10) << " trimming session " << s->con << " " << s->name
+                         << " because we've been out of quorum too long" << dendl;
+            } else {
+                continue;
+            }
+
+            s->con->mark_down();
+            remove_session(s);
+            logger->inc(l_mon_session_trim);
+        }
+    }
+
+    sync_trim_providers();
+
+    if (!maybe_wait_for_quorum.empty()) {
+        finish_contexts(g_ceph_context, maybe_wait_for_quorum);
+    }
+
+    if (is_leader() && paxos->is_active() && fingerprint.is_zero()) {
+        // this is only necessary on upgraded clusters.
+        MonitorDBStore::TransactionRef t = paxos->get_pending_transaction();
+        prepare_new_fingerprint(t);
+        paxos->trigger_propose();
+    }
+
+    mgr_client.update_daemon_health(get_health_metrics());
+    new_tick();
 }
 
 void PaxosMonitor::_dispatch_op(MonOpRequestRef op) {
@@ -3407,4 +3499,307 @@ PaxosMonitor::PaxosMonitor(CephContext *cct_, MonitorDBStore *store, std::string
     // actually matters will wait until we have quorum etc and then
     // retry (and revalidate).
     leader_mon_commands = local_mon_commands;
+}
+
+int PaxosMonitor::preinit() {
+
+    std::unique_lock l(lock);
+
+    dout(1) << "preinit fsid " << monmap->fsid << dendl;
+
+    int r = sanitize_options();
+    if (r < 0) {
+        derr << "option sanitization failed!" << dendl;
+        return r;
+    }
+
+    ceph_assert(!logger);
+    {
+        PerfCountersBuilder pcb(g_ceph_context, "mon", l_mon_first, l_mon_last);
+        pcb.add_u64(l_mon_num_sessions, "num_sessions", "Open sessions", "sess",
+                    PerfCountersBuilder::PRIO_USEFUL);
+        pcb.add_u64_counter(l_mon_session_add, "session_add", "Created sessions",
+                            "sadd", PerfCountersBuilder::PRIO_INTERESTING);
+        pcb.add_u64_counter(l_mon_session_rm, "session_rm", "Removed sessions",
+                            "srm", PerfCountersBuilder::PRIO_INTERESTING);
+        pcb.add_u64_counter(l_mon_session_trim, "session_trim", "Trimmed sessions",
+                            "strm", PerfCountersBuilder::PRIO_USEFUL);
+        pcb.add_u64_counter(l_mon_num_elections, "num_elections", "Elections participated in",
+                            "ecnt", PerfCountersBuilder::PRIO_USEFUL);
+        pcb.add_u64_counter(l_mon_election_call, "election_call", "Elections started",
+                            "estt", PerfCountersBuilder::PRIO_INTERESTING);
+        pcb.add_u64_counter(l_mon_election_win, "election_win", "Elections won",
+                            "ewon", PerfCountersBuilder::PRIO_INTERESTING);
+        pcb.add_u64_counter(l_mon_election_lose, "election_lose", "Elections lost",
+                            "elst", PerfCountersBuilder::PRIO_INTERESTING);
+        logger = pcb.create_perf_counters();
+        cct->get_perfcounters_collection()->add(logger);
+    }
+
+    ceph_assert(!cluster_logger);
+    {
+        PerfCountersBuilder pcb(g_ceph_context, "cluster", l_cluster_first, l_cluster_last);
+        pcb.add_u64(l_cluster_num_mon, "num_mon", "Monitors");
+        pcb.add_u64(l_cluster_num_mon_quorum, "num_mon_quorum", "Monitors in quorum");
+        pcb.add_u64(l_cluster_num_osd, "num_osd", "OSDs");
+        pcb.add_u64(l_cluster_num_osd_up, "num_osd_up", "OSDs that are up");
+        pcb.add_u64(l_cluster_num_osd_in, "num_osd_in", "OSD in state \"in\" (they are in cluster)");
+        pcb.add_u64(l_cluster_osd_epoch, "osd_epoch", "Current epoch of OSD map");
+        pcb.add_u64(l_cluster_osd_bytes, "osd_bytes", "Total capacity of cluster", NULL, 0, unit_t(UNIT_BYTES));
+        pcb.add_u64(l_cluster_osd_bytes_used, "osd_bytes_used", "Used space", NULL, 0, unit_t(UNIT_BYTES));
+        pcb.add_u64(l_cluster_osd_bytes_avail, "osd_bytes_avail", "Available space", NULL, 0, unit_t(UNIT_BYTES));
+        pcb.add_u64(l_cluster_num_pool, "num_pool", "Pools");
+        pcb.add_u64(l_cluster_num_pg, "num_pg", "Placement groups");
+        pcb.add_u64(l_cluster_num_pg_active_clean, "num_pg_active_clean", "Placement groups in active+clean state");
+        pcb.add_u64(l_cluster_num_pg_active, "num_pg_active", "Placement groups in active state");
+        pcb.add_u64(l_cluster_num_pg_peering, "num_pg_peering", "Placement groups in peering state");
+        pcb.add_u64(l_cluster_num_object, "num_object", "Objects");
+        pcb.add_u64(l_cluster_num_object_degraded, "num_object_degraded", "Degraded (missing replicas) objects");
+        pcb.add_u64(l_cluster_num_object_misplaced, "num_object_misplaced", "Misplaced (wrong location in the cluster) objects");
+        pcb.add_u64(l_cluster_num_object_unfound, "num_object_unfound", "Unfound objects");
+        pcb.add_u64(l_cluster_num_bytes, "num_bytes", "Size of all objects", NULL, 0, unit_t(UNIT_BYTES));
+        cluster_logger = pcb.create_perf_counters();
+    }
+
+    paxos->init_logger();
+
+    // verify cluster_uuid
+    {
+        int r = check_fsid();
+        if (r == -ENOENT)
+            r = write_fsid();
+        if (r < 0) {
+            return r;
+        }
+    }
+
+    // open compatset
+    read_features();
+
+    // have we ever joined a quorum?
+    has_ever_joined = (store->get(MONITOR_NAME, "joined") != 0);
+    dout(10) << "has_ever_joined = " << (int)has_ever_joined << dendl;
+
+    if (!has_ever_joined) {
+        // impose initial quorum restrictions?
+        list<string> initial_members;
+        get_str_list(g_conf()->mon_initial_members, initial_members);
+
+        if (!initial_members.empty()) {
+            dout(1) << " initial_members " << initial_members << ", filtering seed monmap" << dendl;
+
+            monmap->set_initial_members(
+                    g_ceph_context, initial_members, name, messenger->get_myaddrs(),
+                    &extra_probe_peers);
+
+            dout(10) << " monmap is " << *monmap << dendl;
+            dout(10) << " extra probe peers " << extra_probe_peers << dendl;
+        }
+    } else if (!monmap->contains(name)) {
+        derr << "not in monmap and have been in a quorum before; "
+             << "must have been removed" << dendl;
+        if (g_conf()->mon_force_quorum_join) {
+            dout(0) << "we should have died but "
+                    << "'mon_force_quorum_join' is set -- allowing boot" << dendl;
+        } else {
+            derr << "commit suicide!" << dendl;
+            return -ENOENT;
+        }
+    }
+
+    {
+        // We have a potentially inconsistent store state in hands. Get rid of it
+        // and start fresh.
+        bool clear_store = false;
+        if (store->exists("mon_sync", "in_sync")) {
+            dout(1) << __func__ << " clean up potentially inconsistent store state"
+                    << dendl;
+            clear_store = true;
+        }
+
+        if (store->get("mon_sync", "force_sync") > 0) {
+            dout(1) << __func__ << " force sync by clearing store state" << dendl;
+            clear_store = true;
+        }
+
+        if (clear_store) {
+            set<string> sync_prefixes = get_sync_targets_names();
+            store->clear(sync_prefixes);
+        }
+    }
+
+    sync_last_committed_floor = store->get("mon_sync", "last_committed_floor");
+    dout(10) << "sync_last_committed_floor " << sync_last_committed_floor << dendl;
+
+    init_paxos();
+
+    if (is_keyring_required()) {
+        // we need to bootstrap authentication keys so we can form an
+        // initial quorum.
+        if (authmon()->get_last_committed() == 0) {
+            dout(10) << "loading initial keyring to bootstrap authentication for mkfs" << dendl;
+            bufferlist bl;
+            int err = store->get("mkfs", "keyring", bl);
+            if (err == 0 && bl.length() > 0) {
+                // Attempt to decode and extract keyring only if it is found.
+                KeyRing keyring;
+                auto p = bl.cbegin();
+                decode(keyring, p);
+                extract_save_mon_key(keyring);
+            }
+        }
+
+        string keyring_loc = g_conf()->mon_data + "/keyring";
+
+        r = keyring.load(cct, keyring_loc);
+        if (r < 0) {
+            EntityName mon_name;
+            mon_name.set_type(CEPH_ENTITY_TYPE_MON);
+            EntityAuth mon_key;
+            if (key_server.get_auth(mon_name, mon_key)) {
+                dout(1) << "copying mon. key from old db to external keyring" << dendl;
+                keyring.add(mon_name, mon_key);
+                bufferlist bl;
+                keyring.encode_plaintext(bl);
+                write_default_keyring(bl);
+            } else {
+                derr << "unable to load initial keyring " << g_conf()->keyring << dendl;
+                return r;
+            }
+        }
+    }
+
+    admin_hook = new AdminHook(this);
+    AdminSocket* admin_socket = cct->get_admin_socket();
+
+    // unlock while registering to avoid mon_lock -> admin socket lock dependency.
+    l.unlock();
+    // register tell/asock commands
+    for (const auto& command : local_mon_commands) {
+        if (!command.is_tell()) {
+            continue;
+        }
+        const auto prefix = cmddesc_get_prefix(command.cmdstring);
+        if (prefix == "injectargs" ||
+            prefix == "version" ||
+            prefix == "tell") {
+            // not registerd by me
+            continue;
+        }
+        r = admin_socket->register_command(command.cmdstring, admin_hook,
+                                           command.helpstring);
+        ceph_assert(r == 0);
+    }
+    l.lock();
+
+    // add ourselves as a conf observer
+    g_conf().add_observer(this);
+
+    messenger->set_auth_client(this);
+    messenger->set_auth_server(this);
+    mgr_messenger->set_auth_client(this);
+
+    auth_registry.refresh_config();
+
+    return 0;
+}
+
+int PaxosMonitor::init() {
+    dout(2) << "init" << dendl;
+    std::lock_guard l(lock);
+
+    finisher.start();
+
+    // start ticker
+    timer.init();
+    new_tick();
+
+    cpu_tp.start();
+
+    // i'm ready!
+    messenger->add_dispatcher_tail(this);
+
+    // kickstart pet mgrclient
+    mgr_client.init();
+    mgr_messenger->add_dispatcher_tail(&mgr_client);
+    mgr_messenger->add_dispatcher_tail(this);  // for auth ms_* calls
+    mgrmon()->prime_mgr_client();
+
+    // generate list of filestore OSDs
+    osdmon()->get_filestore_osd_list();
+
+    state = STATE_PROBING;
+    bootstrap();
+    // add features of myself into feature_map
+    session_map.feature_map.add_mon(con_self->get_features());
+    return 0;
+}
+
+void PaxosMonitor::shutdown() {
+    dout(1) << "shutdown" << dendl;
+
+    lock.lock();
+
+    wait_for_paxos_write();
+
+    {
+        std::lock_guard l(auth_lock);
+        authmon()->_set_mon_num_rank(0, 0);
+    }
+
+    state = STATE_SHUTDOWN;
+
+    lock.unlock();
+    g_conf().remove_observer(this);
+    lock.lock();
+
+    if (admin_hook) {
+        cct->get_admin_socket()->unregister_commands(admin_hook);
+        delete admin_hook;
+        admin_hook = NULL;
+    }
+
+    elector.shutdown();
+
+    mgr_client.shutdown();
+
+    lock.unlock();
+    finisher.wait_for_empty();
+    finisher.stop();
+    lock.lock();
+
+    // clean up
+    paxos->shutdown();
+    for (auto& svc : services) {
+        svc->shutdown();
+    }
+
+    finish_contexts(g_ceph_context, waitfor_quorum, -ECANCELED);
+    finish_contexts(g_ceph_context, maybe_wait_for_quorum, -ECANCELED);
+
+    timer.shutdown();
+
+    cpu_tp.stop();
+
+    remove_all_sessions();
+
+    log_client.shutdown();
+
+    // unlock before msgr shutdown...
+    lock.unlock();
+
+    // shutdown messenger before removing logger from perfcounter collection,
+    // otherwise _ms_dispatch() will try to update deleted logger
+    messenger->shutdown();
+    mgr_messenger->shutdown();
+
+    if (logger) {
+        cct->get_perfcounters_collection()->remove(logger);
+    }
+    if (cluster_logger) {
+        if (cluster_logger_registered)
+            cct->get_perfcounters_collection()->remove(cluster_logger);
+        delete cluster_logger;
+        cluster_logger = NULL;
+    }
 }

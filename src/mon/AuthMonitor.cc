@@ -15,7 +15,6 @@
 #include <sstream>
 
 #include "mon/AuthMonitor.h"
-#include "mon/Monitor.h"
 #include "mon/MonitorDBStore.h"
 #include "mon/OSDMonitor.h"
 #include "mon/MDSMonitor.h"
@@ -275,7 +274,7 @@ void AuthMonitor::create_initial()
   format_version = 3;
 }
 
-void AuthMonitor::update_from_paxos(bool *need_bootstrap)
+void AuthMonitor::update_from_smr(bool *need_bootstrap)
 {
   dout(10) << __func__ << dendl;
   load_health();

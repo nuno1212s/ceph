@@ -35,13 +35,13 @@
 #include "osd/OSDMapMapping.h"
 
 #include "CreatingPGs.h"
-#include "PaxosService.h"
 
 #include "erasure-code/ErasureCodeInterface.h"
 #include "mon/MonOpRequest.h"
+#include "Service.h"
 #include <boost/functional/hash.hpp>
 
-class Monitor;
+class PaxosMonitor;
 class PGMap;
 struct MonSession;
 class MOSDMap;
@@ -198,7 +198,7 @@ struct osdmap_manifest_t {
 };
 WRITE_CLASS_ENCODER(osdmap_manifest_t);
 
-class OSDMonitor : public PaxosService,
+class OSDMonitor : public Service,
                    public md_config_obs_t {
   CephContext *cct;
 
@@ -287,7 +287,8 @@ public:
   void get_store_prefixes(std::set<std::string>& s) const override;
 
 private:
-  void update_from_paxos(bool *need_bootstrap) override;
+
+  void update_from_smr(bool *need_bootstrap) override;
   void create_pending() override;  // prepare a new pending
   void encode_pending(MonitorDBStore::TransactionRef t) override;
   void on_active() override;
@@ -675,7 +676,7 @@ protected:
   void set_default_laggy_params(int target_osd);
 
 public:
-  OSDMonitor(CephContext *cct, Monitor &mn, Paxos &p, const std::string& service_name);
+  OSDMonitor(CephContext *cct, AbstractMonitor &mn, SMRProtocol &p, const std::string& service_name);
 
   void tick() override;  // check state, take actions
 

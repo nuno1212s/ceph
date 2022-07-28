@@ -811,13 +811,13 @@ public:
    */
 
   /**
-   * @defgroup PaxosService_h_store_get Wrapper function interface to access
+   * @defgroup Service_h_store_get Wrapper function interface to access
    *					the back store for reading purposes
    * @{
    */
 
   /**
-   * @defgroup PaxosService_h_version_cache Obtain cached versions for this
+   * @defgroup Service_h_version_cache Obtain cached versions for this
    *                                        service.
    * @{
    */

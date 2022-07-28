@@ -4,11 +4,11 @@
 #pragma once
 
 #include "include/Context.h"
-#include "PaxosService.h"
+#include "Service.h"
 #include "mon/PGMap.h"
 #include "mgr/ServiceMap.h"
 
-class MgrStatMonitor : public PaxosService {
+class MgrStatMonitor : public Service {
   // live version
   version_t version = 0;
   PGMapDigest digest;
@@ -22,14 +22,14 @@ class MgrStatMonitor : public PaxosService {
   ceph::buffer::list pending_service_map_bl;
 
 public:
-  MgrStatMonitor(Monitor &mn, Paxos &p, const std::string& service_name);
+  MgrStatMonitor(AbstractMonitor &mn, SMRProtocol &p, const std::string& service_name);
   ~MgrStatMonitor() override;
 
   void init() override {}
   void on_shutdown() override {}
 
   void create_initial() override;
-  void update_from_paxos(bool *need_bootstrap) override;
+  void update_from_smr(bool *need_bootstrap) override;
   void create_pending() override;
   void encode_pending(MonitorDBStore::TransactionRef t) override;
   version_t get_trim_to() const override;

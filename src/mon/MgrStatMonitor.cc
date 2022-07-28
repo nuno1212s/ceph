@@ -49,8 +49,8 @@ static ostream& _prefix(std::ostream *_dout, Monitor &mon) {
 		<< ").mgrstat ";
 }
 
-MgrStatMonitor::MgrStatMonitor(Monitor &mn, Paxos &p, const string& service_name)
-  : PaxosService(mn, p, service_name)
+MgrStatMonitor::MgrStatMonitor(AbstractMonitor &mn, SMRProtocol &p, const string& service_name)
+  : Service(mn, p, service_name)
 {
 }
 
@@ -66,7 +66,7 @@ void MgrStatMonitor::create_initial()
   encode(service_map, pending_service_map_bl, CEPH_FEATURES_ALL);
 }
 
-void MgrStatMonitor::update_from_paxos(bool *need_bootstrap)
+void MgrStatMonitor::update_from_smr(bool *need_bootstrap)
 {
   version = get_last_committed();
   dout(10) << " " << version << dendl;

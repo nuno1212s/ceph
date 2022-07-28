@@ -25,21 +25,21 @@
 #include "include/types.h"
 #include "msg/Messenger.h"
 
-#include "PaxosService.h"
+#include "Service.h"
 #include "MonMap.h"
 #include "MonitorDBStore.h"
 
-class MonmapMonitor : public PaxosService {
+class MonmapMonitor : public Service {
  public:
-  MonmapMonitor(Monitor &mn, Paxos &p, const std::string& service_name)
-    : PaxosService(mn, p, service_name)
+  MonmapMonitor(AbstractMonitor &mn, SMRProtocol p, const std::string& service_name)
+    : Service(mn, p, service_name)
   {
   }
   MonMap pending_map; //the pending map awaiting passage
 
   void create_initial() override;
 
-  void update_from_paxos(bool *need_bootstrap) override;
+  void update_from_smr(bool *need_bootstrap) override;
 
   void create_pending() override;
 

@@ -605,6 +605,8 @@ public:
     version_t read_current_from_service(const std::string &service_name,
                                         const std::string &key) override;
 
+    bool exists_in_service(const std::string &service_name, const std::string &key) override;
+
 
     MonitorDBStore::TransactionRef get_pending_transaction() override;
 

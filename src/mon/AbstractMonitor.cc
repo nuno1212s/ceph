@@ -116,7 +116,6 @@ using ceph::timespan_str;
 const string AbstractMonitor::MONITOR_NAME = "monitor";
 const string AbstractMonitor::MONITOR_STORE_PREFIX = "monitor_store";
 
-
 AbstractMonitor::AbstractMonitor(CephContext *cct_, MonitorDBStore *store, string nm, Messenger *m, Messenger *mgr_m, MonMap *map)
         : Dispatcher(cct_),
           AuthServer(cct_),
@@ -178,8 +177,6 @@ AbstractMonitor::AbstractMonitor(CephContext *cct_, MonitorDBStore *store, strin
             g_conf().get_val<uint64_t>("mon_op_history_slow_op_size"),
             g_conf().get_val<std::chrono::seconds>("mon_op_history_slow_op_threshold").count());
 
-    //TODO: Services
-
     bool r = mon_caps.parse("allow *", NULL);
     ceph_assert(r);
 }
@@ -193,20 +190,6 @@ AbstractMonitor::~AbstractMonitor()
     ceph_assert(session_map.sessions.empty());
 }
 
-class AdminHook : public AdminSocketHook {
-    AbstractMonitor *mon;
-public:
-    explicit AdminHook(AbstractMonitor *m) : mon(m) {}
-    int call(std::string_view command, const cmdmap_t& cmdmap,
-             Formatter *f,
-             std::ostream& errss,
-             bufferlist& out) override {
-        stringstream outss;
-        int r = mon->do_admin_command(command, cmdmap, f, errss, outss);
-        out.append(outss);
-        return r;
-    }
-};
 
 bool AbstractMonitor::is_keyring_required()
 {
@@ -990,7 +973,7 @@ void AbstractMonitor::handle_tell_command(MonOpRequestRef op)
     if (stringstream ss; !cmdmap_from_json(m->cmd, &cmdmap, ss)) {
         return reply_tell_command(op, -EINVAL, ss.str());
     }
-    map<string,string> param_str_map;
+    map<string,string> param_stick()tr_map;
     _generate_command_map(cmdmap, param_str_map);
     string prefix;
     if (!cmd_getval(cmdmap, "prefix", prefix)) {
@@ -1087,6 +1070,16 @@ void AbstractMonitor::send_reply(MonOpRequestRef op, Message *reply)
     }
 }
 
+void AbstractMonitor::prepare_new_fingerprint(MonitorDBStore::TransactionRef t)
+{
+    uuid_d nf;
+    nf.generate_random();
+    dout(10) << __func__ << " proposing cluster_fingerprint " << nf << dendl;
+
+    bufferlist bl;
+    encode(nf, bl);
+    t->put(MONITOR_NAME, "cluster_fingerprint", bl);
+}
 void AbstractMonitor::no_reply(MonOpRequestRef op)
 {
     MonSession *session = op->get_session();
@@ -2451,3 +2444,10 @@ void AbstractMonitor::get_cluster_status(stringstream &ss, Formatter *f,
     }
 }
 
+/************ TICK ***************/
+void AbstractMonitor::new_tick()
+{
+    timer.add_event_after(g_conf()->mon_tick_interval, new C_MonContext{this, [this](int) {
+        tick();
+    }});
+}

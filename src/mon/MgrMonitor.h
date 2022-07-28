@@ -19,10 +19,9 @@
 
 #include "include/Context.h"
 #include "MgrMap.h"
-#include "PaxosService.h"
 #include "MonCommand.h"
 
-class MgrMonitor: public PaxosService
+class MgrMonitor: public Service
 {
   MgrMap map;
   MgrMap pending_map;
@@ -71,9 +70,10 @@ class MgrMonitor: public PaxosService
   std::vector<MonCommand> pending_command_descs;
 
 public:
-  MgrMonitor(Monitor &mn, Paxos &p, const std::string& service_name)
-    : PaxosService(mn, p, service_name)
+  MgrMonitor(AbstractMonitor &mn, SMRProtocol &p, const std::string& service_name)
+    : Service(mn, p, service_name)
   {}
+
   ~MgrMonitor() override {}
 
   void init() override;
@@ -94,8 +94,8 @@ public:
 
   void create_initial() override;
   void get_store_prefixes(std::set<std::string>& s) const override;
-  void update_from_paxos(bool *need_bootstrap) override;
-  void post_paxos_update() override;
+  void update_from_smr(bool *need_bootstrap) override;
+  void post_smr_update() override;
   void create_pending() override;
   void encode_pending(MonitorDBStore::TransactionRef t) override;
 

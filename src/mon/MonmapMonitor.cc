@@ -13,7 +13,6 @@
  */
 
 #include "MonmapMonitor.h"
-#include "Monitor.h"
 #include "OSDMonitor.h"
 #include "messages/MMonCommand.h"
 #include "messages/MMonJoin.h"
@@ -58,7 +57,8 @@ using ceph::make_message;
 using ceph::mono_clock;
 using ceph::mono_time;
 using ceph::timespan_str;
-static ostream& _prefix(std::ostream *_dout, Monitor &mon) {
+
+static ostream& _prefix(std::ostream *_dout, AbstractMonitor &mon) {
   return *_dout << "mon." << mon.name << "@" << mon.rank
 		<< "(" << mon.get_state_name()
 		<< ").monmap v" << mon.monmap->epoch << " ";
@@ -80,7 +80,7 @@ void MonmapMonitor::create_initial()
   }
 }
 
-void MonmapMonitor::update_from_paxos(bool *need_bootstrap)
+void MonmapMonitor::update_from_smr(bool *need_bootstrap)
 {
   version_t version = get_last_committed();
   if (version <= mon.monmap->get_epoch())
@@ -1132,7 +1132,7 @@ bool MonmapMonitor::prepare_command(MonOpRequestRef op)
     if (!mon.osdmon()->is_writeable()) {
       dout(10) << __func__
 	      << ":  waiting for osdmon writeable for stretch mode" << dendl;
-      mon.osdmon()->wait_for_writeable(op, new Monitor::C_RetryMessage(&mon, op));
+      mon.osdmon()->wait_for_writeable(op, new AbstractMonitor::C_RetryMessage(&mon, op));
       return false;
     }
     {

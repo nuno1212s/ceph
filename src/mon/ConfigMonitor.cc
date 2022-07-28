@@ -3,7 +3,6 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
-#include "mon/Monitor.h"
 #include "mon/ConfigMonitor.h"
 #include "mon/KVMonitor.h"
 #include "mon/MgrMonitor.h"
@@ -49,7 +48,7 @@ using ceph::JSONFormatter;
 using ceph::mono_clock;
 using ceph::mono_time;
 using ceph::timespan_str;
-static ostream& _prefix(std::ostream *_dout, const Monitor &mon,
+static ostream& _prefix(std::ostream *_dout, const AbstractMonitor &mon,
                         const ConfigMonitor *hmon) {
   return *_dout << "mon." << mon.name << "@" << mon.rank
 		<< "(" << mon.get_state_name() << ").config ";
@@ -58,9 +57,8 @@ static ostream& _prefix(std::ostream *_dout, const Monitor &mon,
 const string KEY_PREFIX("config/");
 const string HISTORY_PREFIX("config-history/");
 
-ConfigMonitor::ConfigMonitor(Monitor &m, Paxos &p, const string& service_name)
-  : PaxosService(m, p, service_name) {
-}
+ConfigMonitor::ConfigMonitor(AbstractMonitor &m, SMRProtocol &p, const string& service_name)
+  : Service(m, p, service_name) {}
 
 void ConfigMonitor::init()
 {
@@ -74,7 +72,7 @@ void ConfigMonitor::create_initial()
   pending.clear();
 }
 
-void ConfigMonitor::update_from_paxos(bool *need_bootstrap)
+void ConfigMonitor::update_from_smr(bool *need_bootstrap)
 {
   if (version == get_last_committed()) {
     return;
@@ -738,7 +736,7 @@ update:
   force_immediate_propose();
   wait_for_finished_proposal(
     op,
-    new Monitor::C_Command(
+    new AbstractMonitor::C_Command(
       mon, op, 0, ss.str(), odata,
       get_last_committed() + 1));
   return true;

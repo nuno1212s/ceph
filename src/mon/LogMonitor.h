@@ -22,9 +22,8 @@
 #include <fmt/format.h>
 #include <fmt/ostream.h>
 
+#include "Service.h"
 #include "include/types.h"
-#include "PaxosService.h"
-
 #include "common/config_fwd.h"
 #include "common/LogEntry.h"
 #include "include/str_map.h"
@@ -40,7 +39,7 @@ namespace logging {
 }
 }
 
-class LogMonitor : public PaxosService,
+class LogMonitor : public Service,
                    public md_config_obs_t {
 private:
   std::multimap<utime_t,LogEntry> pending_log;
@@ -129,7 +128,7 @@ private:
   void update_log_channels();
 
   void create_initial() override;
-  void update_from_paxos(bool *need_bootstrap) override;
+  void update_from_smr(bool *need_bootstrap) override;
   void create_pending() override;  // prepare a new pending
   // propose pending update to peers
   void generate_logentry_key(const std::string& channel, version_t v, std::string *out);
@@ -155,8 +154,8 @@ private:
   void _create_sub_incremental(MLog *mlog, int level, version_t sv);
 
  public:
-  LogMonitor(Monitor &mn, Paxos &p, const std::string& service_name)
-    : PaxosService(mn, p, service_name) { }
+  LogMonitor(AbstractMonitor &mn, SMRProtocol &p, const std::string& service_name)
+    : Service(mn, p, service_name) { }
 
   void init() override {
     generic_dout(10) << "LogMonitor::init" << dendl;

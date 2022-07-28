@@ -177,7 +177,7 @@ void MgrMonitor::get_store_prefixes(std::set<string>& s) const
   s.insert(MGR_METADATA_PREFIX);
 }
 
-void MgrMonitor::update_from_paxos(bool *need_bootstrap)
+void MgrMonitor::update_from_smr(bool *need_bootstrap)
 {
   version_t version = get_last_committed();
   if (version != map.epoch) {
@@ -312,18 +312,18 @@ health_status_t MgrMonitor::should_warn_about_mgr_down()
   return HEALTH_OK;
 }
 
-void MgrMonitor::post_paxos_update()
+void MgrMonitor::post_smr_update()
 {
   // are we handling digest subscribers?
   if (digest_event) {
     bool send = false;
     if (prev_health_checks.empty()) {
-      prev_health_checks.resize(mon.paxos_service.size());
+      prev_health_checks.resize(mon.services.size());
       send = true;
     }
-    ceph_assert(prev_health_checks.size() == mon.paxos_service.size());
+    ceph_assert(prev_health_checks.size() == mon.services.size());
     for (auto i = 0u; i < prev_health_checks.size(); i++) {
-      const auto& curr = mon.paxos_service[i]->get_health_checks();
+      const auto& curr = mon.services[i]->get_health_checks();
       if (!send && curr != prev_health_checks[i]) {
         send = true;
       }

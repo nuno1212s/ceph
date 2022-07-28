@@ -13,7 +13,6 @@
  */
 
 #include "Elector.h"
-#include "Monitor.h"
 
 #include "common/Timer.h"
 #include "MonitorDBStore.h"
@@ -52,13 +51,13 @@ using ceph::JSONFormatter;
 using ceph::mono_clock;
 using ceph::mono_time;
 using ceph::timespan_str;
-static ostream& _prefix(std::ostream *_dout, Monitor *mon, epoch_t epoch) {
+static ostream& _prefix(std::ostream *_dout, AbstractMonitor *mon, epoch_t epoch) {
   return *_dout << "mon." << mon->name << "@" << mon->rank
 		<< "(" << mon->get_state_name()
 		<< ").elector(" << epoch << ") ";
 }
 
-Elector::Elector(Monitor *m, int strategy) : logic(this, static_cast<ElectionLogic::election_strategy>(strategy),
+Elector::Elector(PaxosMonitor *m, int strategy) : logic(this, static_cast<ElectionLogic::election_strategy>(strategy),
 						   &peer_tracker,
 						   m->cct->_conf.get_val<double>("mon_elector_ignore_propose_margin"),
 						   m->cct),

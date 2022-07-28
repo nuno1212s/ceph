@@ -25,7 +25,7 @@
 #include "mon/ElectionLogic.h"
 #include "mon/ConnectionTracker.h"
 
-class Monitor;
+class PaxosMonitor;
 
 
 /**
@@ -73,7 +73,7 @@ class Elector : public ElectionOwner, RankProvider {
   /**
    * The Monitor instance associated with this class.
    */
-  Monitor *mon;
+  PaxosMonitor *mon;
 
   /**
    * Event callback responsible for dealing with an expired election once a

@@ -21,8 +21,8 @@
 #include "global/global_init.h"
 #include "include/ceph_features.h"
 #include "include/types.h"
-#include "mon/PaxosService.h"
 #include "mon/MonitorDBStore.h"
+#include "mon/Service.h"
 
 class MAuth;
 class KeyRing;
@@ -30,7 +30,7 @@ class Monitor;
 
 #define MIN_GLOBAL_ID 0x1000
 
-class AuthMonitor : public PaxosService {
+class AuthMonitor : public Service {
 public:
   enum IncType {
     GLOBAL_ID,
@@ -140,7 +140,7 @@ private:
   void get_initial_keyring(KeyRing *keyring);
   void create_initial_keys(KeyRing *keyring);
   void create_initial() override;
-  void update_from_paxos(bool *need_bootstrap) override;
+  void update_from_smr(bool *need_bootstrap) override;
   void create_pending() override;  // prepare a new pending
   bool prepare_global_id(MonOpRequestRef op);
   bool _should_increase_max_global_id(); ///< called under mon->auth_lock
@@ -183,8 +183,8 @@ private:
       const EntityAuth& auth);
 
  public:
-  AuthMonitor(Monitor &mn, Paxos &p, const std::string& service_name)
-    : PaxosService(mn, p, service_name),
+  AuthMonitor(AbstractMonitor &mn, SMRProtocol &p, const std::string& service_name)
+    : Service(mn, p, service_name),
       max_global_id(0),
       last_allocated_id(0)
   {}

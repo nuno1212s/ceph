@@ -58,7 +58,6 @@ public:
 
     const utime_t &get_leader_since() const;
 
-    void prepare_new_fingerprint(MonitorDBStore::TransactionRef t);
 
     int quorum_age() const {
         auto age = std::chrono::duration_cast<std::chrono::seconds>(
@@ -89,11 +88,6 @@ private:
     utime_t exited_quorum; // time detected as not in quorum; 0 if in
     std::set<std::string> outside_quorum;
 
-    /// true if we have ever joined a quorum.  if false, we are either a
-    /// new cluster, a newly joining monitor, or a just-upgraded
-    /// monitor.
-    bool has_ever_joined;
-
     std::vector<MonCommand> leader_mon_commands; // quorum leader's commands
     std::vector<MonCommand> local_mon_commands;  // commands i support
     ceph::buffer::list local_mon_commands_bl;       // encoded version of above
@@ -114,13 +108,22 @@ private:
     void set_elector_disallowed_leaders(bool allow_election);
 
 public:
-    epoch_t get_epoch() {
+
+    int preinit() override;
+
+    int init() override;
+
+    void shutdown() override;
+
+    const bool is_shutdown() override;
+
+    epoch_t get_epoch() override {
         return elector.get_epoch();
     }
 
-    int get_leader() const { return leader; }
+    int get_leader() const override { return leader; }
 
-    std::string get_leader_name() {
+    std::string get_leader_name() override {
         return quorum.empty() ? std::string() : monmap->get_name(leader);
     }
 
@@ -515,7 +518,8 @@ public:
     void _quorum_status(ceph::Formatter *f, std::ostream& ss) override;
 
     //Forward requests to the leader
-    void forward_request_leader(MonOpRequestRef op);
+    void forward_request_leader(MonOpRequestRef op) override;
+
     //handle requests that have been forwarded to us
     void handle_forward(MonOpRequestRef op);
 
@@ -550,6 +554,11 @@ public:
 
 
 public:
+
+    /**
+     * Tick this monitor
+     */
+    void tick() override;
 
     void _dispatch_op(MonOpRequestRef op) override;
 
