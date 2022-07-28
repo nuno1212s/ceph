@@ -20,6 +20,7 @@
 
 #include "osd/OSDMap.h"
 
+#include "Service.h"
 #include "MonitorDBStore.h"
 
 #include "messages/PaxosServiceMessage.h"
@@ -83,10 +84,10 @@
 #undef dout_prefix
 #define dout_prefix _prefix(_dout, this)
 
-static std::ostream& _prefix(std::ostream *_dout, AbstractMonitor &mon) {
-    return *_dout << "mon." << mon.name << "@" << mon.rank
-                  << "(" << mon.get_state_name()
-                  << ").monmap v" << mon.monmap->epoch << " ";
+static std::ostream& _prefix(std::ostream *_dout, AbstractMonitor *mon) {
+    return *_dout << "mon." << mon->name << "@" << mon->rank
+                  << "(" << mon->get_state_name()
+                  << ").monmap v" << mon->monmap->epoch << " ";
 }
 
 using namespace TOPNSPC::common;

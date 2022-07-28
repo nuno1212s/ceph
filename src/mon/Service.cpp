@@ -4,6 +4,8 @@
 #include "include/stringify.h"
 #include "include/ceph_assert.h"
 #include "mon/MonOpRequest.h"
+#include "SMRProtocol.h"
+#include "AbstractMonitor.h"
 
 using std::ostream;
 using std::string;
@@ -170,7 +172,7 @@ bool Service::should_propose(double &delay) {
         if ((now - smr_protocol.last_commit_time()) > g_conf()->paxos_propose_interval)
             delay = (double) g_conf()->paxos_min_wait;
         else
-            delay = (double) (g_conf()->paxos_propose_interval + paxos.last_commit_time
+            delay = (double) (g_conf()->paxos_propose_interval + smr_protocol.last_commit_time()
                               - now);
     }
     return true;
@@ -377,7 +379,7 @@ void Service::maybe_trim() {
     trim_to = first_committed + to_remove;
 
     dout(10) << __func__ << " trimming to " << trim_to << ", " << to_remove << " states" << dendl;
-    MonitorDBStore::TransactionRef t = paxos.get_pending_transaction();
+    MonitorDBStore::TransactionRef t = smr_protocol.get_pending_transaction();
     trim(t, first_committed, trim_to);
     put_first_committed(t, trim_to);
     cached_first_committed = trim_to;
@@ -385,7 +387,6 @@ void Service::maybe_trim() {
     // let the service add any extra stuff
     encode_trim_extra(t, trim_to);
 
-    //TODO
     smr_protocol.trigger_propose();
 }
 
@@ -430,7 +431,7 @@ void Service::trim(MonitorDBStore::TransactionRef t,
         t->erase(get_service_name(), v);
 
         std::string full_key = smr_protocol.combine_strings("full", v);
-        if (smr_protocol.exists(get_service_name(), full_key)) {
+        if (smr_protocol.exists_in_service(get_service_name(), full_key)) {
             dout(20) << __func__ << " " << full_key << dendl;
             t->erase(get_service_name(), full_key);
         }

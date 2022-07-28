@@ -1,8 +1,10 @@
 #ifndef CEPH_SERVICE_H
 #define CEPH_SERVICE_H
 
-#include "AbstractMonitor.h"
+#include "include/Context.h"
 #include "SMRProtocol.h"
+#include "AbstractMonitor.h"
+#include "MonitorDBStore.h"
 
 class Service {
 
@@ -135,7 +137,7 @@ protected:
     version_t format_version;
 
     /**
-     * @defgroup PaxosService_h_callbacks Callback classes
+     * @defgroup Service_h_callbacks Callback classes
      * @{
      */
 

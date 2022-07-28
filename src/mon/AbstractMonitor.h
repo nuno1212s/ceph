@@ -1,7 +1,6 @@
 #ifndef CEPH_ABSTRACTMONITOR_H
 #define CEPH_ABSTRACTMONITOR_H
 
-
 #include <cmath>
 #include <string>
 #include <array>
@@ -32,7 +31,6 @@
 #include "mon/MonOpRequest.h"
 #include "common/WorkQueue.h"
 #include "common/admin_socket.h"
-#include "Service.h"
 
 enum {
     l_cluster_first = 555000,
@@ -59,6 +57,8 @@ enum {
 };
 
 #define COMPAT_SET_LOC "feature_set"
+
+class Service;
 
 class AbstractMonitor : public Dispatcher,
                         public AuthClient,
