@@ -28,7 +28,6 @@
 #include "mgr/mgr_commands.h"
 #include "mon/AuthMonitor.h"
 #include "mon/MonitorDBStore.h"
-#include "mon/Paxos.h"
 #include "mon/MonMap.h"
 #include "mds/FSMap.h"
 #include "mon/MgrMap.h"
@@ -1067,7 +1066,7 @@ int main(int argc, char **argv) {
 	break;
       cout << "\n--- " << v << " ---" << std::endl;
       auto tx(std::make_shared<MonitorDBStore::Transaction>());
-      Paxos::decode_append_transaction(tx, bl);
+      SMRProtocol::decode_append_transaction(tx, bl);
       JSONFormatter f(true);
       tx->dump(&f);
       f.flush(cout);

@@ -23,7 +23,6 @@
 #include "include/ceph_features.h"
 
 #include "mon/MonMap.h"
-#include "mon/Monitor.h"
 #include "mon/MonitorDBStore.h"
 #include "mon/MonClient.h"
 
@@ -44,6 +43,7 @@
 #include "perfglue/heap_profiler.h"
 
 #include "include/ceph_assert.h"
+#include "mon/PaxosMonitor.h"
 
 #define dout_subsys ceph_subsys_mon
 
@@ -534,7 +534,8 @@ int main(int argc, const char **argv)
     }
     ceph_assert(r == 0);
 
-    Monitor mon(g_ceph_context, g_conf()->name.get_id(), &store, 0, 0, &monmap);
+    //TODO: Bifurcate this to allow for febft monitors to also be created
+    PaxosMonitor mon(g_ceph_context, g_conf()->name.get_id(), &store, 0, 0, &monmap);
     r = mon.mkfs(osdmapbl);
     if (r < 0) {
       derr << argv[0] << ": error creating monfs: " << cpp_strerror(r) << dendl;
@@ -647,7 +648,7 @@ int main(int argc, const char **argv)
   }
 
   bufferlist magicbl;
-  err = store->get(Monitor::MONITOR_NAME, "magic", magicbl);
+  err = store->get(AbstractMonitor::MONITOR_NAME, "magic", magicbl);
   if (err || !magicbl.length()) {
     derr << "unable to read magic from mon data" << dendl;
     prefork.exit(1);
@@ -658,7 +659,7 @@ int main(int argc, const char **argv)
     prefork.exit(1);
   }
 
-  err = Monitor::check_features(store);
+  err = AbstractMonitor::check_features(store);
   if (err < 0) {
     derr << "error checking features: " << cpp_strerror(err) << dendl;
     prefork.exit(1);
@@ -857,7 +858,7 @@ int main(int argc, const char **argv)
     prefork.exit(1);
   }
 
-  mon = new Monitor(g_ceph_context, g_conf()->name.get_id(), store,
+  mon = new PaxosMonitor(g_ceph_context, g_conf()->name.get_id(), store,
 		    msgr, mgr_msgr, &monmap);
 
   mon->orig_argc = argc;
