@@ -61,7 +61,7 @@ using ceph::make_message;
 using ceph::mono_clock;
 using ceph::mono_time;
 
-static ostream& _prefix(std::ostream *_dout, Monitor &mon,
+static ostream& _prefix(std::ostream *_dout, AbstractMonitor &mon,
 			const MgrMap& mgrmap) {
   return *_dout << "mon." << mon.name << "@" << mon.rank
 		<< "(" << mon.get_state_name()

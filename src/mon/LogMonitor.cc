@@ -62,6 +62,14 @@
 
 #define dout_subsys ceph_subsys_mon
 
+
+#undef dout_prefix
+#define dout_prefix _prefix(_dout, mon, get_last_committed())
+static ostream& _prefix(std::ostream *_dout, AbstractMonitor &mon, version_t v) {
+    return *_dout << "mon." << mon.name << "@" << mon.rank
+                  << "(" << mon.get_state_name()
+                  << ").log v" << v << " ";
+}
 using namespace TOPNSPC::common;
 
 using std::cerr;
@@ -220,15 +228,6 @@ void LogMonitor::log_channel_info::clear()
 
 LogMonitor::log_channel_info::log_channel_info() = default;
 LogMonitor::log_channel_info::~log_channel_info() = default;
-
-
-#undef dout_prefix
-#define dout_prefix _prefix(_dout, mon, get_last_committed())
-static ostream& _prefix(std::ostream *_dout, Monitor &mon, version_t v) {
-  return *_dout << "mon." << mon.name << "@" << mon.rank
-		<< "(" << mon.get_state_name()
-		<< ").log v" << v << " ";
-}
 
 ostream& operator<<(ostream &out, const LogMonitor &pm)
 {

@@ -760,7 +760,7 @@ public:
              Formatter *f,
              std::ostream &errss,
              bufferlist &out) override {
-        stringstream outss;
+        std::stringstream outss;
         int r = mon->do_admin_command(command, cmdmap, f, errss, outss);
         out.append(outss);
         return r;
