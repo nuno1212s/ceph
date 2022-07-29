@@ -141,7 +141,7 @@ public:
 
     void _apply_compatset_features(CompatSet &new_features);
 
-protected:
+public:
 
     /*
      * We still use a monitor DB store, but only for some of the needed
@@ -151,6 +151,7 @@ protected:
      */
     MonitorDBStore *store;
 
+protected:
     /// features we require of peers (based on on-disk compatset)
     uint64_t required_features;
 

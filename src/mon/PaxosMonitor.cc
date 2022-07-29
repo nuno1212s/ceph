@@ -4006,60 +4006,6 @@ int PaxosMonitor::do_admin_command(
     return r;
 }
 
-bool PaxosMonitor::_add_bootstrap_peer_hint(std::string_view cmd,
-                                            const cmdmap_t &cmdmap,
-                                            ostream &ss) {
-    if (is_leader() || is_peon()) {
-        ss << "mon already active; ignoring bootstrap hint";
-        return true;
-    }
-
-    entity_addrvec_t addrs;
-    string addrstr;
-    if (cmd_getval(cmdmap, "addr", addrstr)) {
-        dout(10) << "_add_bootstrap_peer_hint '" << cmd << "' addr '"
-                 << addrstr << "'" << dendl;
-
-        entity_addr_t addr;
-        if (!addr.parse(addrstr, entity_addr_t::TYPE_ANY)) {
-            ss << "failed to parse addrs '" << addrstr
-               << "'; syntax is 'add_bootstrap_peer_hint ip[:port]'";
-            return false;
-        }
-
-        addrs.v.push_back(addr);
-        if (addr.get_port() == 0) {
-            addrs.v[0].set_type(entity_addr_t::TYPE_MSGR2);
-            addrs.v[0].set_port(CEPH_MON_PORT_IANA);
-            addrs.v.push_back(addr);
-            addrs.v[1].set_type(entity_addr_t::TYPE_LEGACY);
-            addrs.v[1].set_port(CEPH_MON_PORT_LEGACY);
-        } else if (addr.get_type() == entity_addr_t::TYPE_ANY) {
-            if (addr.get_port() == CEPH_MON_PORT_LEGACY) {
-                addrs.v[0].set_type(entity_addr_t::TYPE_LEGACY);
-            } else {
-                addrs.v[0].set_type(entity_addr_t::TYPE_MSGR2);
-            }
-        }
-    } else if (cmd_getval(cmdmap, "addrv", addrstr)) {
-        dout(10) << "_add_bootstrap_peer_hintv '" << cmd << "' addrv '"
-                 << addrstr << "'" << dendl;
-        const char *end = 0;
-        if (!addrs.parse(addrstr.c_str(), &end)) {
-            ss << "failed to parse addrs '" << addrstr
-               << "'; syntax is 'add_bootstrap_peer_hintv v2:ip:port[,v1:ip:port]'";
-            return false;
-        }
-    } else {
-        ss << "no addr or addrv provided";
-        return false;
-    }
-
-    extra_probe_peers.insert(addrs);
-    ss << "adding peer " << addrs << " to list: " << extra_probe_peers;
-    return true;
-}
-
 #undef FLAG
 #undef COMMAND
 #undef COMMAND_WITH_FLAG
