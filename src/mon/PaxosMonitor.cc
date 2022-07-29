@@ -4003,3 +4003,7 @@ void PaxosMonitor::shutdown() {
         cluster_logger = NULL;
     }
 }
+
+void PaxosMonitor::enable_stretch_mode() {
+    //TODO: What?
+}
