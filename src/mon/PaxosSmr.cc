@@ -1005,7 +1005,7 @@ bool PaxosSMR::do_refresh() {
 
     // make sure we have the latest state loaded up
     auto start = ceph::coarse_mono_clock::now();
-    mon.refresh_from_paxos(&need_bootstrap);
+    mon.refresh_from_smr(&need_bootstrap);
     auto end = ceph::coarse_mono_clock::now();
 
     logger->inc(l_paxos_refresh);
