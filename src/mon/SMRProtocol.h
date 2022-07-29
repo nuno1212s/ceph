@@ -13,12 +13,9 @@ public:
 
     virtual void init() = 0;
 
-    virtual bool is_init() const = 0;
-
     virtual bool is_active() const = 0;
 
     virtual bool is_updating() const = 0;
-
     /**
      * Check if a given version is readable.
      *
@@ -134,7 +131,7 @@ public:
      * Get the time of the last consensus iteration made by the SMR protocol
      * @return
      */
-    virtual utime_t last_commit_time() = 0;
+    virtual utime_t get_last_commit_time() = 0;
 
     /**
      * Get first committed version

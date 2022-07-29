@@ -169,10 +169,10 @@ bool Service::should_propose(double &delay) {
         delay = 0.0;
     } else {
         utime_t now = ceph_clock_now();
-        if ((now - smr_protocol.last_commit_time()) > g_conf()->paxos_propose_interval)
+        if ((now - smr_protocol.get_last_commit_time()) > g_conf()->paxos_propose_interval)
             delay = (double) g_conf()->paxos_min_wait;
         else
-            delay = (double) (g_conf()->paxos_propose_interval + smr_protocol.last_commit_time()
+            delay = (double) (g_conf()->paxos_propose_interval + smr_protocol.get_last_commit_time()
                               - now);
     }
     return true;

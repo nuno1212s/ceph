@@ -2,7 +2,8 @@
 #define CEPH_PAXOSSMR_H
 
 #include "SMRProtocol.h"
-#include "PaxosMonitor.h"
+
+class PaxosMonitor;
 
 class PaxosSMR : public SMRProtocol {
 
@@ -494,7 +495,7 @@ public:
                 proposer_context = NULL;
             }
         }
-    }
+    };
 
     /**
      * @}
@@ -543,6 +544,7 @@ public:
     void init_logger() override;
 
     void init() override;
+
 
     /**
      * Check if we are recovering.
@@ -609,7 +611,7 @@ public:
 
     void dispatch(MonOpRequestRef op) override;
 
-    utime_t last_commit_time() override {
+    utime_t get_last_commit_time() override {
         return last_commit_time;
     }
 

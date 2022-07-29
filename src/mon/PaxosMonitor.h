@@ -586,7 +586,7 @@ public:
     }
 
 public:
-    PaxosMonitor(CephContext* cct_, std::string nm,, MonitorDBStore *store,  Messenger *m, Messenger *mgr_m, MonMap *map);
+    PaxosMonitor(CephContext* cct_, std::string nm, MonitorDBStore *store,  Messenger *m, Messenger *mgr_m, MonMap *map);
 };
 
 
