@@ -537,8 +537,8 @@ public:
 
 
     ~PaxosSMR() override {
-
-    }
+        delete logger;
+    };
 
 public:
     void init_logger() override;

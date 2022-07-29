@@ -287,7 +287,7 @@ public:
 protected:
     virtual MonitorDBStore *get_store() = 0;
 
-    virtual ~SMRProtocol() = 0;
+    virtual ~SMRProtocol() = default;
 };
 
 

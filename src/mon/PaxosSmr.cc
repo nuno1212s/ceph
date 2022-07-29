@@ -1342,6 +1342,12 @@ void PaxosSMR::peon_init() {
     logger->inc(l_paxos_start_peon);
 }
 
+void PaxosSMR::reset_pending_committing_finishers()
+{
+    committing_finishers.splice(committing_finishers.end(), pending_finishers);
+    finish_contexts(g_ceph_context, committing_finishers, -EAGAIN);
+}
+
 
 /** -----------------
 * @defgroup service interface
