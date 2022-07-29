@@ -102,7 +102,7 @@ class FailHandler : public FileSystemCommandHandler
   {
     if (!mon->osdmon()->is_writeable()) {
       // not allowed to write yet, so retry when we can
-      mon->osdmon()->wait_for_writeable(op, new PaxosService::C_RetryMessage(mon->mdsmon(), op));
+      mon->osdmon()->wait_for_writeable(op, new Service::C_RetryMessage(mon->mdsmon(), op));
       return -EAGAIN;
     }
 
@@ -141,7 +141,7 @@ class FailHandler : public FileSystemCommandHandler
 class FsNewHandler : public FileSystemCommandHandler
 {
   public:
-  explicit FsNewHandler(Paxos *paxos)
+  explicit FsNewHandler(SMRProtocol *paxos)
     : FileSystemCommandHandler("fs new"), m_paxos(paxos)
   {
   }
