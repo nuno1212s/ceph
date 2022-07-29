@@ -158,10 +158,12 @@ protected:
 
     std::set<int> quorum;       // current active set of monitors (if !starting)
 
+public:
     // map of counts of connected clients, by type and features, for
     // each quorum mon
     std::map<int, FeatureMap> quorum_feature_map;
 
+protected:
     /**
      * Intersection of quorum member's connection feature bits.
      */
