@@ -127,7 +127,7 @@ bool KVMonitor::preprocess_query(MonOpRequestRef op)
   case MSG_MON_COMMAND:
     try {
       return preprocess_command(op);
-    } catch (const bad_cmd_get& e) {
+    } catch (const ceph::common::bad_cmd_get& e) {
       bufferlist bl;
       mon.reply_command(op, -EINVAL, e.what(), bl, get_last_committed());
       return true;
@@ -148,7 +148,7 @@ bool KVMonitor::preprocess_command(MonOpRequestRef op)
     mon.reply_command(op, -EINVAL, rs, get_last_committed());
     return true;
   }
-  string format = cmd_getval_or<string>(cmdmap, "format", "plain");
+  string format = ceph::common::cmd_getval_or<string>(cmdmap, "format", "plain");
   boost::scoped_ptr<Formatter> f(Formatter::create(format));
 
   string prefix;
@@ -240,7 +240,7 @@ bool KVMonitor::prepare_update(MonOpRequestRef op)
   case MSG_MON_COMMAND:
     try {
       return prepare_command(op);
-    } catch (const bad_cmd_get& e) {
+    } catch (const ceph::common::bad_cmd_get& e) {
       bufferlist bl;
       mon.reply_command(op, -EINVAL, e.what(), bl, get_last_committed());
       return true;
@@ -415,7 +415,7 @@ void KVMonitor::do_osd_new(
   const string& dmcrypt_key)
 {
     //TODO
-  ceph_assert(paxos.is_plugged());
+  ceph_assert(smr_protocol.is_plugged());
 
   string dmcrypt_key_prefix = _get_dmcrypt_prefix(uuid, "luks");
   bufferlist dmcrypt_key_value;

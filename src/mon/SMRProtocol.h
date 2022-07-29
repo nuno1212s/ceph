@@ -13,6 +13,8 @@ public:
 
     virtual void init() = 0;
 
+    virtual bool is_init() const = 0;
+
     virtual bool is_active() const = 0;
 
     virtual bool is_updating() const = 0;
@@ -283,6 +285,8 @@ public:
 
 protected:
     virtual MonitorDBStore *get_store() = 0;
+
+    virtual ~SMRProtocol() = 0;
 };
 
 

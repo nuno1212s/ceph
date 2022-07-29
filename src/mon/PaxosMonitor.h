@@ -48,7 +48,7 @@ public:
         return get_state_name(state);
     }
 
-    bool is_init() const { return state == STATE_INIT; }
+    bool is_init() const override { return state == STATE_INIT; }
     bool is_shutdown() const { return state == STATE_SHUTDOWN; }
     bool is_probing() const { return state == STATE_PROBING; }
     bool is_synchronizing() const { return state == STATE_SYNCHRONIZING; }

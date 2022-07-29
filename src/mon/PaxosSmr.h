@@ -448,10 +448,12 @@ private:
      * Callback class responsible for handling a Collect Timeout.
      */
     class C_CollectTimeout;
+
     /**
      * Callback class responsible for handling an Accept Timeout.
      */
     class C_AcceptTimeout;
+
     /**
      * Callback class responsible for handling a Lease Ack Timeout.
      */
@@ -480,12 +482,11 @@ public:
         bool proposed;
         utime_t proposal_time;
 
-        C_Proposal(Context *c, ceph::buffer::list& proposal_bl) :
+        C_Proposal(Context *c, ceph::buffer::list &proposal_bl) :
                 proposer_context(c),
                 bl(proposal_bl),
                 proposed(false),
-                proposal_time(ceph_clock_now())
-        { }
+                proposal_time(ceph_clock_now()) {}
 
         void finish(int r) override {
             if (proposer_context) {
@@ -493,7 +494,8 @@ public:
                 proposer_context = NULL;
             }
         }
-    };
+    }
+
     /**
      * @}
      */
@@ -506,6 +508,7 @@ public:
     const std::string paxos_name;
 
     friend class PaxosMonitor;
+
     friend class Service;
 
     std::list<std::string> extra_state_dirs;
@@ -530,6 +533,11 @@ public:
               accept_timeout_event(0),
               clock_drift_warned(0),
               trimming(false) {}
+
+
+    ~PaxosSMR() override {
+
+    }
 
 public:
     void init_logger() override;

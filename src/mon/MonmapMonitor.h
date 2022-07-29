@@ -31,10 +31,11 @@
 
 class MonmapMonitor : public Service {
  public:
-  MonmapMonitor(AbstractMonitor &mn, SMRProtocol p, const std::string& service_name)
+  MonmapMonitor(AbstractMonitor &mn, SMRProtocol &p, const std::string& service_name)
     : Service(mn, p, service_name)
   {
   }
+
   MonMap pending_map; //the pending map awaiting passage
 
   void create_initial() override;
