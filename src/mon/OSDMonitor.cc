@@ -10065,7 +10065,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
     pending_inc.crush.clear();
     newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd crush set-device-class") {
@@ -10145,7 +10145,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     getline(ss, rs);
     wait_for_finished_proposal(
       op,
-      new Monitor::C_Command(mon,op, 0, rs, get_last_committed() + 1));
+      new AbstractMonitor::C_Command(mon,op, 0, rs, get_last_committed() + 1));
     return true;
  } else if (prefix == "osd crush rm-device-class") {
     bool stop = false;
@@ -10204,7 +10204,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     getline(ss, rs);
     wait_for_finished_proposal(
       op,
-      new Monitor::C_Command(mon,op, 0, rs, get_last_committed() + 1));
+      new AbstractMonitor::C_Command(mon,op, 0, rs, get_last_committed() + 1));
     return true;
   } else if (prefix == "osd crush class create") {
     string device_class;
@@ -10632,7 +10632,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     ss << action << " item id " << osdid << " name '" << osd_name << "' weight "
        << weight << " at location " << loc << " to crush map";
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						      get_last_committed() + 1));
     return true;
 
@@ -10681,7 +10681,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 	   << "' weight " << weight
 	   << " at location " << loc << " to crush map";
 	getline(ss, rs);
-	wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+	wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						  get_last_committed() + 1));
 	return true;
       }
@@ -10720,7 +10720,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 	  pending_inc.crush.clear();
 	  newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
 	  getline(ss, rs);
-	  wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+	  wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						   get_last_committed() + 1));
 	  return true;
 	}
@@ -10774,7 +10774,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     pending_inc.crush.clear();
     newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
     wait_for_finished_proposal(op,
-			       new Monitor::C_Command(mon, op, err, ss.str(),
+			       new AbstractMonitor::C_Command(mon, op, err, ss.str(),
 						      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd crush link") {
@@ -10830,7 +10830,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 	err = 0;
       }
     }
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, err, ss.str(),
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, err, ss.str(),
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd crush rm" ||
@@ -10852,7 +10852,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 	err = 0;
 	ss << "device '" << name << "' does not appear in the crush map";
 	getline(ss, rs);
-	wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+	wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						  get_last_committed() + 1));
 	return true;
       }
@@ -10886,7 +10886,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
           pending_inc.new_crush_node_flags[id] = 0;
 	ss << "removed item id " << id << " name '" << name << "' from crush map";
 	getline(ss, rs);
-	wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+	wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						  get_last_committed() + 1));
 	return true;
       }
@@ -10900,7 +10900,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
     ss << "reweighted crush hierarchy";
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						  get_last_committed() + 1));
     return true;
   } else if (prefix == "osd crush reweight") {
@@ -10938,7 +10938,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     ss << "reweighted item id " << id << " name '" << name << "' to " << w
        << " in crush map";
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						  get_last_committed() + 1));
     return true;
   } else if (prefix == "osd crush reweight-subtree") {
@@ -10976,7 +10976,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     ss << "reweighted subtree id " << id << " name '" << name << "' to " << w
        << " in crush map";
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd crush tunables") {
@@ -11014,7 +11014,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
     ss << "adjusted tunables profile to " << profile;
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd crush set-tunable") {
@@ -11054,7 +11054,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
     ss << "adjusted tunable " << tunable << " to " << value;
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
 
@@ -11094,7 +11094,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
     }
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
 
@@ -11133,7 +11133,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
     }
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
 
@@ -11159,7 +11159,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       }
 
       getline(ss, rs);
-      wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+      wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 							get_last_committed() + 1));
       return true;
     } else {
@@ -11237,7 +11237,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
 
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
                                                       get_last_committed() + 1));
     return true;
 
@@ -11298,7 +11298,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
 
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
                                                       get_last_committed() + 1));
     return true;
 
@@ -11339,7 +11339,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
     }
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
 
@@ -11377,7 +11377,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     pending_inc.crush.clear();
     newcrush.encode(pending_inc.crush, mon.get_quorum_con_features());
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
                                get_last_committed() + 1));
     return true;
 
@@ -11417,7 +11417,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     pending_inc.new_max_osd = newmax;
     ss << "set new max_osd = " << pending_inc.new_max_osd;
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
 
@@ -11439,7 +11439,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       pending_inc.new_nearfull_ratio = n;
     ss << prefix << " " << n;
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd set-require-min-compat-client") {
@@ -11504,7 +11504,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     ss << "set require_min_compat_client to " << vno;
     pending_inc.new_require_min_compat_client = vno;
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 							  get_last_committed() + 1));
     return true;
   } else if (prefix == "osd pause") {
@@ -11812,7 +11812,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
     if (any) {
       getline(ss, rs);
-      wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, err, rs,
+      wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, err, rs,
 						get_last_committed() + 1));
       return true;
     }
@@ -11974,7 +11974,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
     if (any) {
       getline(ss, rs);
-      wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, err, rs,
+      wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, err, rs,
                                  get_last_committed() + 1));
       return true;
     }
@@ -12171,7 +12171,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       err = -ENOENT;
       getline(ss, rs);
       wait_for_finished_proposal(op,
-        new Monitor::C_Command(mon, op, err, rs, get_last_committed() + 1));
+        new AbstractMonitor::C_Command(mon, op, err, rs, get_last_committed() + 1));
       return true;
     }
 
@@ -12397,7 +12397,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       pending_inc.new_primary_affinity[id] = ww;
       ss << "set osd." << id << " primary-affinity to " << w << " (" << std::ios::hex << ww << std::ios::dec << ")";
       getline(ss, rs);
-      wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+      wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
                                                 get_last_committed() + 1));
       return true;
     } else {
@@ -12430,7 +12430,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       pending_inc.new_weight[id] = ww;
       ss << "reweighted osd." << id << " to " << w << " (" << std::hex << ww << std::dec << ")";
       getline(ss, rs);
-      wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+      wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						get_last_committed() + 1));
       return true;
     } else {
@@ -12449,7 +12449,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     pending_inc.new_weight.insert(weights.begin(), weights.end());
     wait_for_finished_proposal(
 	op,
-	new Monitor::C_Command(mon, op, 0, rs, rdata, get_last_committed() + 1));
+	new AbstractMonitor::C_Command(mon, op, 0, rs, rdata, get_last_committed() + 1));
     return true;
   } else if (prefix == "osd lost") {
     int64_t id;
@@ -12479,7 +12479,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       pending_inc.new_lost[id] = e;
       ss << "marked osd lost in epoch " << e;
       getline(ss, rs);
-      wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+      wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						get_last_committed() + 1));
       return true;
     }
@@ -12585,7 +12585,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 
     getline(ss, rs);
     wait_for_finished_proposal(op,
-        new Monitor::C_Command(mon, op, 0, rs, get_last_committed() + 1));
+        new AbstractMonitor::C_Command(mon, op, 0, rs, get_last_committed() + 1));
     force_immediate_propose();
     return true;
 
@@ -12640,7 +12640,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
 
     wait_for_finished_proposal(op,
-        new Monitor::C_Command(mon, op, 0, rs, rdata,
+        new AbstractMonitor::C_Command(mon, op, 0, rs, rdata,
                                get_last_committed() + 1));
     force_immediate_propose();
     return true;
@@ -12709,7 +12709,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       rdata.append(ss);
     }
     wait_for_finished_proposal(op,
-        new Monitor::C_Command(mon, op, 0, rs, rdata,
+        new AbstractMonitor::C_Command(mon, op, 0, rs, rdata,
                                get_last_committed() + 1));
     return true;
 
@@ -12727,7 +12727,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
     ss << " removed all blocklist entries";
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
                                               get_last_committed() + 1));
     return true;
   } else if (prefix == "osd blocklist" ||
@@ -12813,7 +12813,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 
 	ss << "blocklisting " << addr << " until " << expires << " (" << d << " sec)";
 	getline(ss, rs);
-	wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+	wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						  get_last_committed() + 1));
 	return true;
       } else if (blocklistop == "rm") {
@@ -12837,7 +12837,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 						 pending_inc.new_range_blocklist))) {
 	  ss << "un-blocklisting " << addr;
 	  getline(ss, rs);
-	  wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+	  wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						    get_last_committed() + 1));
 	  return true;
 	}
@@ -12886,7 +12886,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       ss << "created pool " << poolstr << " snap " << snapname;
     }
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd pool rmsnap") {
@@ -12926,7 +12926,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       ss << "already removed pool " << poolstr << " snap " << snapname;
     }
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd pool create") {
@@ -13133,7 +13133,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       ss << "pool '" << poolstr << "' created";
     }
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
 
@@ -13215,7 +13215,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
         << cpp_strerror(ret);
     }
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, ret, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, ret, rs,
 					      get_last_committed() + 1));
     return true;
 
@@ -13227,7 +13227,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       goto reply;
 
     getline(ss, rs);
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 						   get_last_committed() + 1));
     return true;
   } else if (prefix == "osd tier add") {
@@ -13295,7 +13295,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     np->set_snap_epoch(pending_inc.epoch); // tier will update to our snap info
     ntp->tier_of = pool_id;
     ss << "pool '" << tierpoolstr << "' is now (or already was) a tier of '" << poolstr << "'";
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, ss.str(),
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, ss.str(),
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd tier remove" ||
@@ -13355,7 +13355,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     np->tiers.erase(tierpool_id);
     ntp->clear_tier();
     ss << "pool '" << tierpoolstr << "' is now (or already was) not a tier of '" << poolstr << "'";
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, ss.str(),
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, ss.str(),
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd tier set-overlay") {
@@ -13412,7 +13412,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     ss << "overlay for '" << poolstr << "' is now (or already was) '" << overlaypoolstr << "'";
     if (overlay_p->cache_mode == pg_pool_t::CACHEMODE_NONE)
       ss <<" (WARNING: overlay pool cache_mode is still NONE)";
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, ss.str(),
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, ss.str(),
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd tier remove-overlay" ||
@@ -13453,7 +13453,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     np->clear_write_tier();
     np->set_last_force_op_resend(pending_inc.epoch);
     ss << "there is now (or already was) no overlay for '" << poolstr << "'";
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, ss.str(),
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, ss.str(),
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd tier cache-mode") {
@@ -13598,7 +13598,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 	  base_pool->write_tier == pool_id)
 	ss <<" (WARNING: pool is still configured as read or write tier)";
     }
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, ss.str(),
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, ss.str(),
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd tier add-cache") {
@@ -13694,7 +13694,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     ntp->hit_set_params = hsp;
     ntp->target_max_bytes = size;
     ss << "pool '" << tierpoolstr << "' is now (or already was) a cache tier of '" << poolstr << "'";
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, ss.str(),
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, ss.str(),
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd pool set-quota") {
@@ -13743,7 +13743,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
     }
     ss << "set-quota " << field << " = " << value << " for pool " << poolstr;
     rs = ss.str();
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					      get_last_committed() + 1));
     return true;
   } else if (prefix == "osd pool application enable" ||
@@ -13850,7 +13850,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 
  update:
   getline(ss, rs);
-  wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+  wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, 0, rs,
 					    get_last_committed() + 1));
   return true;
 

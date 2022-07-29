@@ -1125,7 +1125,7 @@ void PaxosMonitor::set_mon_crush_location(const string &loc) {
     need_set_crush_loc = true;
 }
 
-void PaxosMonitor::notify_new_monmap(bool can_change_external_state) {
+void PaxosMonitor::notify_new_monmap(bool can_change_external_state = false) {
     if (need_set_crush_loc) {
         auto my_info_i = monmap->mon_info.find(name);
         if (my_info_i != monmap->mon_info.end() &&

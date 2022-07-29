@@ -114,7 +114,7 @@ public:
     std::map<std::string,std::string> crush_loc;
     bool need_set_crush_loc{false};
 
-    void notify_new_monmap(bool can_change_external_state = false) override;
+    void notify_new_monmap(bool can_change_external_state) override;
 
 private:
     void _reset();   ///< called from bootstrap, start_, or join_election
@@ -139,9 +139,9 @@ public:
     // end election (called by Elector)
     void finish_election();
 public:
-    bool is_stretch_mode() { return stretch_mode_engaged; }
-    bool is_degraded_stretch_mode() { return degraded_stretch_mode; }
-    bool is_recovering_stretch_mode() { return recovering_stretch_mode; }
+    bool is_stretch_mode() override { return stretch_mode_engaged; }
+    bool is_degraded_stretch_mode() override { return degraded_stretch_mode; }
+    bool is_recovering_stretch_mode() override { return recovering_stretch_mode; }
 
     /**
      * This set of functions maintains the in-memory stretch state
@@ -155,18 +155,18 @@ public:
      * via OSDMonitor::update_from_paxos, to guarantee consistent
      * updates across the entire cluster.
      */
-    void try_engage_stretch_mode();
-    void maybe_go_degraded_stretch_mode();
+    void try_engage_stretch_mode() override;
+    void maybe_go_degraded_stretch_mode() override;
     void trigger_degraded_stretch_mode(const std::set<std::string>& dead_mons,
-                                       const std::set<int>& dead_buckets);
-    void set_degraded_stretch_mode();
-    void go_recovery_stretch_mode();
-    void set_recovery_stretch_mode();
-    void trigger_healthy_stretch_mode();
-    void set_healthy_stretch_mode();
+                                       const std::set<int>& dead_buckets) override;
+    void set_degraded_stretch_mode() override;
+    void go_recovery_stretch_mode() override;
+    void set_recovery_stretch_mode() override;
+    void trigger_healthy_stretch_mode() override;
+    void set_healthy_stretch_mode() override;
     //This is also not implemented in regular ceph
-    void enable_stretch_mode();
-    void set_mon_crush_location(const std::string& loc);
+    void enable_stretch_mode() override;
+    void set_mon_crush_location(const std::string& loc) override;
 
     /**
      * @defgroup Monitor_h_sync Synchronization

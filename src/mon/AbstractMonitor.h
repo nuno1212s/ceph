@@ -743,6 +743,45 @@ public:
 
     friend class KVMonitor;
 
+    /**
+     * @defgroup Paxos Strech mode
+     *
+     * @{
+     */
+
+
+    virtual bool is_stretch_mode() = 0;
+    virtual bool is_degraded_stretch_mode() = 0;
+    virtual bool is_recovering_stretch_mode() = 0;
+
+    /**
+     * This set of functions maintains the in-memory stretch state
+     * and sets up transitions of the map states by calling in to
+     * MonmapMonitor and OSDMonitor.
+     *
+     * The [maybe_]go_* functions are called on the leader to
+     * decide if transitions should happen; the trigger_* functions
+     * set up the map transitions; and the set_* functions actually
+     * change the memory state -- but these are only called
+     * via OSDMonitor::update_from_paxos, to guarantee consistent
+     * updates across the entire cluster.
+     */
+    virtual void try_engage_stretch_mode() = 0;
+    virtual void maybe_go_degraded_stretch_mode() = 0;
+    virtual void trigger_degraded_stretch_mode(const std::set<std::string>& dead_mons,
+                                       const std::set<int>& dead_buckets) = 0;
+    virtual void set_degraded_stretch_mode() = 0;
+    virtual void go_recovery_stretch_mode() = 0;
+    virtual void set_recovery_stretch_mode() = 0;
+    virtual void trigger_healthy_stretch_mode() = 0;
+    virtual void set_healthy_stretch_mode() = 0;
+    //This is also not implemented in regular ceph
+    virtual void enable_stretch_mode() = 0;
+    virtual void set_mon_crush_location(const std::string& loc) = 0;
+
+    /**
+     * }@
+     */
 protected:
     // don't allow copying
     AbstractMonitor(const AbstractMonitor &rhs);
