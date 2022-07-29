@@ -887,7 +887,7 @@ bool MDSMonitor::prepare_offload_targets(MonOpRequestRef op)
 bool MDSMonitor::should_propose(double& delay)
 {
   // delegate to PaxosService to assess whether we should propose
-  return PaxosService::should_propose(delay);
+  return Service::should_propose(delay);
 }
 
 void MDSMonitor::_updated(MonOpRequestRef op)
@@ -1396,11 +1396,11 @@ bool MDSMonitor::prepare_command(MonOpRequestRef op)
 
     batched_propose = h->batched_propose();
     if (batched_propose) {
-      paxos.plug();
+      smr_protocol.plug();
     }
     r = h->handle(&mon, pending, op, cmdmap, ss);
     if (batched_propose) {
-      paxos.unplug();
+      smr_protocol.unplug();
     }
 
     if (r == -EAGAIN) {
@@ -1440,7 +1440,7 @@ out:
 
   if (r >= 0) {
     // success.. delay reply
-    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, r, rs,
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(mon, op, r, rs,
 					      get_last_committed() + 1));
     if (batched_propose) {
       force_immediate_propose();
@@ -1841,11 +1841,11 @@ void MDSMonitor::update_metadata(mds_gid_t gid,
   }
   pending_metadata[gid] = metadata;
 
-  MonitorDBStore::TransactionRef t = paxos.get_pending_transaction();
+  MonitorDBStore::TransactionRef t = smr_protocol.get_pending_transaction();
   bufferlist bl;
   encode(pending_metadata, bl);
   t->put(MDS_METADATA_PREFIX, "last_metadata", bl);
-  paxos.trigger_propose();
+  smr_protocol.trigger_propose();
 }
 
 void MDSMonitor::remove_from_metadata(const FSMap &fsmap, MonitorDBStore::TransactionRef t)
