@@ -942,21 +942,6 @@ bool AbstractMonitor::_allowed_command(MonSession *s, const string &module,
 }
 
 
-struct C_MgrProxyCommand : public Context {
-    AbstractMonitor *mon;
-    MonOpRequestRef op;
-    uint64_t size;
-    bufferlist outbl;
-    string outs;
-    C_MgrProxyCommand(AbstractMonitor *mon, MonOpRequestRef op, uint64_t s)
-            : mon(mon), op(op), size(s) { }
-    void finish(int r) {
-        std::lock_guard l(mon->lock);
-        mon->mgr_proxy_bytes -= size;
-        mon->reply_command(op, r, outs, outbl, 0);
-    }
-};
-
 void AbstractMonitor::handle_tell_command(MonOpRequestRef op)
 {
     ceph_assert(op->is_type_command());
@@ -974,7 +959,7 @@ void AbstractMonitor::handle_tell_command(MonOpRequestRef op)
     if (stringstream ss; !cmdmap_from_json(m->cmd, &cmdmap, ss)) {
         return reply_tell_command(op, -EINVAL, ss.str());
     }
-    map<string,string> param_stick();
+    map<string,string> param_str_map;
     _generate_command_map(cmdmap, param_str_map);
     string prefix;
     if (!cmd_getval(cmdmap, "prefix", prefix)) {

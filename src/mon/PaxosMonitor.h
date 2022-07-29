@@ -34,7 +34,7 @@ public:
         }
     }
 
-    const char *get_state_name() const {
+    const char *get_state_name() const override {
         return get_state_name(state);
     }
 
@@ -77,13 +77,6 @@ private:
     utime_t exited_quorum; // time detected as not in quorum; 0 if in
     std::set<std::string> outside_quorum;
 
-    std::vector<MonCommand> leader_mon_commands; // quorum leader's commands
-    std::vector<MonCommand> local_mon_commands;  // commands i support
-    ceph::buffer::list local_mon_commands_bl;       // encoded version of above
-
-    std::vector<MonCommand> prenautilus_local_mon_commands;
-    ceph::buffer::list prenautilus_local_mon_commands_bl;
-
     bool stretch_mode_engaged{false};
     bool degraded_stretch_mode{false};
     bool recovering_stretch_mode{false};
@@ -101,6 +94,10 @@ public:
     int preinit() override;
 
     int init() override;
+
+    void init_paxos();
+
+    void refresh_from_smr(bool *need_bootstrap) override;
 
     void shutdown() override;
 
@@ -547,24 +544,7 @@ public:
 
     void _dispatch_op(MonOpRequestRef op) override;
 
-public:
-    const std::vector<MonCommand> &get_local_commands(mon_feature_t f) {
-        if (f.contains_all(ceph::features::mon::FEATURE_NAUTILUS)) {
-            return local_mon_commands;
-        } else {
-            return prenautilus_local_mon_commands;
-        }
-    }
-    const ceph::buffer::list& get_local_commands_bl(mon_feature_t f) {
-        if (f.contains_all(ceph::features::mon::FEATURE_NAUTILUS)) {
-            return local_mon_commands_bl;
-        } else {
-            return prenautilus_local_mon_commands_bl;
-        }
-    }
-    void set_leader_commands(const std::vector<MonCommand>& cmds) {
-        leader_mon_commands = cmds;
-    }
+
 
 public:
     PaxosMonitor(CephContext* cct_, std::string nm, MonitorDBStore *store,  Messenger *m, Messenger *mgr_m, MonMap *map);

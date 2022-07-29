@@ -311,7 +311,7 @@ class FsNewHandler : public FileSystemCommandHandler
   }
 
 private:
-  Paxos *m_paxos;
+  SMRProtocol *m_paxos;
 };
 
 class SetHandler : public FileSystemCommandHandler

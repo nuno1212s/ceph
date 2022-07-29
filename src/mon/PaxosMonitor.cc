@@ -1525,7 +1525,7 @@ void PaxosMonitor::handle_command(MonOpRequestRef op) {
         mgr_proxy_bytes += size;
         dout(10) << __func__ << " proxying mgr command (+" << size
                  << " -> " << mgr_proxy_bytes << ")" << dendl;
-        C_MgrProxyCommand *fin = new C_MgrProxyCommand(this, op, size);
+        C_MgrProxyCommand *fin = new C_MgrProxyCommand((AbstractMonitor*) this, op, size);
         mgr_client.start_command(m->cmd,
                                  m->get_data(),
                                  &fin->outbl,
@@ -4367,6 +4367,48 @@ int PaxosMonitor::init() {
     session_map.feature_map.add_mon(con_self->get_features());
     return 0;
 }
+
+void PaxosMonitor::init_paxos()
+{
+    dout(10) << __func__ << dendl;
+    paxos->init();
+
+    // init services
+    for (auto& svc : services) {
+        svc->init();
+    }
+
+    refresh_from_smr(NULL);
+}
+
+void PaxosMonitor::refresh_from_smr(bool *need_bootstrap)
+{
+    dout(10) << __func__ << dendl;
+
+    bufferlist bl;
+    int r = store->get(MONITOR_NAME, "cluster_fingerprint", bl);
+    if (r >= 0) {
+        try {
+            auto p = bl.cbegin();
+            decode(fingerprint, p);
+        }
+        catch (ceph::buffer::error& e) {
+            dout(10) << __func__ << " failed to decode cluster_fingerprint" << dendl;
+        }
+    } else {
+        dout(10) << __func__ << " no cluster_fingerprint" << dendl;
+    }
+
+    for (auto& svc : services) {
+        svc->refresh(need_bootstrap);
+    }
+    for (auto& svc : services) {
+        svc->post_refresh();
+    }
+
+    load_metadata();
+}
+
 
 void PaxosMonitor::shutdown() {
     dout(1) << "shutdown" << dendl;

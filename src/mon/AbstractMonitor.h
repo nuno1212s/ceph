@@ -173,9 +173,35 @@ protected:
 
     std::set<std::string> outside_quorum;
 
+    std::vector<MonCommand> leader_mon_commands; // quorum leader's commands
+    std::vector<MonCommand> local_mon_commands;  // commands i support
+    ceph::buffer::list local_mon_commands_bl;       // encoded version of above
+
+    std::vector<MonCommand> prenautilus_local_mon_commands;
+    ceph::buffer::list prenautilus_local_mon_commands_bl;
+
+public:
+    const std::vector<MonCommand> &get_local_commands(mon_feature_t f) {
+        if (f.contains_all(ceph::features::mon::FEATURE_NAUTILUS)) {
+            return local_mon_commands;
+        } else {
+            return prenautilus_local_mon_commands;
+        }
+    }
+    const ceph::buffer::list& get_local_commands_bl(mon_feature_t f) {
+        if (f.contains_all(ceph::features::mon::FEATURE_NAUTILUS)) {
+            return local_mon_commands_bl;
+        } else {
+            return prenautilus_local_mon_commands_bl;
+        }
+    }
+    void set_leader_commands(const std::vector<MonCommand>& cmds) {
+        leader_mon_commands = cmds;
+    }
+
 public:
 
-    virtual std::string get_state_name() const = 0;
+    virtual const char * get_state_name() const = 0;
 
     void prepare_new_fingerprint(MonitorDBStore::TransactionRef t);
 
@@ -605,6 +631,8 @@ public:
 
     virtual int init() = 0;
 
+    virtual void refresh_from_smr(bool *need_bootstrap) = 0;
+
 protected:
     //Schedule the ticks
     void new_tick();
@@ -766,6 +794,21 @@ public:
 
 protected:
     const AbstractMonitor *mon;
+};
+
+struct C_MgrProxyCommand : public Context {
+    AbstractMonitor *mon;
+    MonOpRequestRef op;
+    uint64_t size;
+    bufferlist outbl;
+    std::string outs;
+    C_MgrProxyCommand(AbstractMonitor *mon, MonOpRequestRef op, uint64_t s)
+            : mon(mon), op(op), size(s) { }
+    void finish(int r) {
+        std::lock_guard l(mon->lock);
+        mon->mgr_proxy_bytes -= size;
+        mon->reply_command(op, r, outs, outbl, 0);
+    }
 };
 
 class AdminHook : public AdminSocketHook {

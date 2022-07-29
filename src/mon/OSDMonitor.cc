@@ -448,7 +448,7 @@ public:
 
 #undef dout_prefix
 #define dout_prefix _prefix(_dout, mon, osdmap)
-static ostream& _prefix(std::ostream *_dout, Monitor &mon, const OSDMap& osdmap) {
+static ostream& _prefix(std::ostream *_dout, AbstractMonitor &mon, const OSDMap& osdmap) {
   return *_dout << "mon." << mon.name << "@" << mon.rank
 		<< "(" << mon.get_state_name()
 		<< ").osd e" << osdmap.get_epoch() << " ";
