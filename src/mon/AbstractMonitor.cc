@@ -416,14 +416,6 @@ void AbstractMonitor::handle_conf_change(const ConfigProxy& conf,
         }});
     }
 
-    if (changed.count("mon_scrub_interval")) {
-        auto scrub_interval =
-                conf.get_val<std::chrono::seconds>("mon_scrub_interval");
-        finisher.queue(new C_MonContext{this, [this, scrub_interval](int) {
-            std::lock_guard l{lock};
-            scrub_update_interval(scrub_interval);
-        }});
-    }
 }
 
 /**
@@ -982,7 +974,7 @@ void AbstractMonitor::handle_tell_command(MonOpRequestRef op)
     if (stringstream ss; !cmdmap_from_json(m->cmd, &cmdmap, ss)) {
         return reply_tell_command(op, -EINVAL, ss.str());
     }
-    map<string,string> param_stick()tr_map;
+    map<string,string> param_stick();
     _generate_command_map(cmdmap, param_str_map);
     string prefix;
     if (!cmd_getval(cmdmap, "prefix", prefix)) {
@@ -1739,11 +1731,12 @@ void AbstractMonitor::ms_handle_accept(Connection *con)
                  << " already on list" << dendl;
     } else {
         std::lock_guard l(session_map_lock);
-        if (state == STATE_SHUTDOWN) {
+        if (is_shutdown()) {
             dout(10) << __func__ << " ignoring new con " << con << " (shutdown)" << dendl;
             con->mark_down();
             return;
         }
+
         dout(10) << __func__ << " con " << con << " session " << s
                  << " registering session for "
                  << con->get_peer_addrs() << dendl;

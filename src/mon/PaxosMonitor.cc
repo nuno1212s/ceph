@@ -516,37 +516,6 @@ void PaxosMonitor::set_elector_disallowed_leaders(bool allow_election) {
     }
 }
 
-void PaxosMonitor::notify_new_monmap(bool can_change_external_state) {
-    if (need_set_crush_loc) {
-        auto my_info_i = monmap->mon_info.find(name);
-        if (my_info_i != monmap->mon_info.end() &&
-            my_info_i->second.crush_loc == crush_loc) {
-            need_set_crush_loc = false;
-        }
-    }
-
-    elector.notify_strategy_maybe_changed(monmap->strategy);
-    dout(30) << __func__ << "we have " << monmap->removed_ranks.size() << " removed ranks" << dendl;
-    for (auto i = monmap->removed_ranks.rbegin();
-         i != monmap->removed_ranks.rend(); ++i) {
-        int rank = *i;
-        dout(10) << __func__ << "removing rank " << rank << dendl;
-        elector.notify_rank_removed(rank);
-    }
-
-    if (monmap->stretch_mode_enabled) {
-        try_engage_stretch_mode();
-    }
-
-    if (is_stretch_mode()) {
-        if (!monmap->stretch_marked_down_mons.empty()) {
-            set_degraded_stretch_mode();
-        }
-    }
-
-    set_elector_disallowed_leaders(can_change_external_state);
-}
-
 // called by bootstrap(), or on leader|peon -> electing
 void PaxosMonitor::_reset() {
     dout(10) << __func__ << dendl;
@@ -2439,7 +2408,7 @@ void PaxosMonitor::handle_timecheck(MonOpRequestRef op) {
 void PaxosMonitor::handle_get_version(MonOpRequestRef op) {
     auto m = op->get_req<MMonGetVersion>();
     dout(10) << "handle_get_version " << *m << dendl;
-    PaxosService *svc = NULL;
+    Service *svc = NULL;
 
     MonSession *s = op->get_session();
     ceph_assert(s);
@@ -2480,7 +2449,7 @@ void PaxosMonitor::handle_get_version(MonOpRequestRef op) {
     return;
 }
 
-bool Monitor::_add_bootstrap_peer_hint(std::string_view cmd,
+bool PaxosMonitor::_add_bootstrap_peer_hint(std::string_view cmd,
                                        const cmdmap_t &cmdmap,
                                        ostream &ss) {
     if (is_leader() || is_peon()) {

@@ -5,18 +5,7 @@
 #include "Elector.h"
 #include "PaxosSmr.h"
 
-enum {
-    l_mon_first = 456000,
-    l_mon_num_sessions,
-    l_mon_session_add,
-    l_mon_session_rm,
-    l_mon_session_trim,
-    l_mon_num_elections,
-    l_mon_election_call,
-    l_mon_election_win,
-    l_mon_election_lose,
-    l_mon_last,
-};
+
 
 class PaxosMonitor : public AbstractMonitor {
     // -- monitor state --
@@ -44,12 +33,13 @@ public:
             default: return "???";
         }
     }
+
     const char *get_state_name() const {
         return get_state_name(state);
     }
 
     bool is_init() const override { return state == STATE_INIT; }
-    bool is_shutdown() const { return state == STATE_SHUTDOWN; }
+    bool is_shutdown() const override { return state == STATE_SHUTDOWN; }
     bool is_probing() const { return state == STATE_PROBING; }
     bool is_synchronizing() const { return state == STATE_SYNCHRONIZING; }
     bool is_electing() const { return state == STATE_ELECTING; }
@@ -58,8 +48,7 @@ public:
 
     const utime_t &get_leader_since() const;
 
-
-    int quorum_age() const {
+    int quorum_age() const override {
         auto age = std::chrono::duration_cast<std::chrono::seconds>(
                 ceph::mono_clock::now() - quorum_since);
         return age.count();
@@ -114,8 +103,6 @@ public:
     int init() override;
 
     void shutdown() override;
-
-    const bool is_shutdown() override;
 
     epoch_t get_epoch() override {
         return elector.get_epoch();
@@ -548,12 +535,6 @@ public:
     /**
      * @} Time check end
      */
-
-    /** can_change_external_state if we can do things like
-     *  call elections as a result of the new map.
-     */
-    void notify_new_monmap(bool can_change_external_state=false);
-
 
 public:
 
