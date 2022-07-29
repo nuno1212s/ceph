@@ -1100,7 +1100,7 @@ void PaxosSMR::handle_lease(MonOpRequestRef op) {
 
     // kick waiters
     finish_contexts(g_ceph_context, waiting_for_active);
-    if (is_readable())
+    if (SMRProtocol::is_readable())
         finish_contexts(g_ceph_context, waiting_for_readable);
 }
 

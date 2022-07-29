@@ -442,15 +442,6 @@ public:
 
     bool _add_bootstrap_peer_hint(std::string_view cmd, const cmdmap_t& cmdmap,
                                   std::ostream& ss);
-    /**
-     * @defgroup Time check things
-     */
-    void handle_timecheck_leader(MonOpRequestRef op);
-    void handle_timecheck_peon(MonOpRequestRef op);
-
-    /**
-     * @} Time check end
-     */
 
 public:
 
