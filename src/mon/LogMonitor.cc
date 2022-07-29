@@ -44,6 +44,7 @@
 
 #include <sstream>
 #include <syslog.h>
+#include <iosfwd>
 
 #include "LogMonitor.h"
 #include "MonitorDBStore.h"
@@ -62,14 +63,6 @@
 
 #define dout_subsys ceph_subsys_mon
 
-
-#undef dout_prefix
-#define dout_prefix _prefix(_dout, mon, get_last_committed())
-static ostream& _prefix(std::ostream *_dout, AbstractMonitor &mon, version_t v) {
-    return *_dout << "mon." << mon.name << "@" << mon.rank
-                  << "(" << mon.get_state_name()
-                  << ").log v" << v << " ";
-}
 using namespace TOPNSPC::common;
 
 using std::cerr;
@@ -228,6 +221,14 @@ void LogMonitor::log_channel_info::clear()
 
 LogMonitor::log_channel_info::log_channel_info() = default;
 LogMonitor::log_channel_info::~log_channel_info() = default;
+
+#undef dout_prefix
+#define dout_prefix _prefix(_dout, mon, get_last_committed())
+static ostream& _prefix(std::ostream *_dout, AbstractMonitor &mon, version_t v) {
+    return *_dout << "mon." << mon.name << "@" << mon.rank
+                  << "(" << mon.get_state_name()
+                  << ").log v" << v << " ";
+}
 
 ostream& operator<<(ostream &out, const LogMonitor &pm)
 {
@@ -758,7 +759,7 @@ bool LogMonitor::should_propose(double& delay)
     return true;
 
   // otherwise fall back to generic policy
-  return PaxosService::should_propose(delay);
+  return Service::should_propose(delay);
 }
 
 
@@ -1030,7 +1031,7 @@ bool LogMonitor::prepare_command(MonOpRequestRef op)
     le.msg = str_join(logtext, " ");
     pending_keys.insert(le.key());
     pending_log.insert(pair<utime_t,LogEntry>(le.stamp, le));
-    wait_for_finished_proposal(op, new Monitor::C_Command(
+    wait_for_finished_proposal(op, new AbstractMonitor::C_Command(
           mon, op, 0, string(), get_last_committed() + 1));
     return true;
   }
