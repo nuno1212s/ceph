@@ -30,6 +30,10 @@ public:
      */
     virtual bool is_readable(version_t v) const = 0;
 
+    bool is_readable() const {
+        return is_readable(0);
+    }
+
     /**
      * Check if we are writeable.
      *

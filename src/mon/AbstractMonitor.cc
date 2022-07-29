@@ -2700,3 +2700,182 @@ health_status_t AbstractMonitor::timecheck_status(ostringstream &ss,
     return status;
 }
 
+
+void AbstractMonitor::handle_timecheck_leader(MonOpRequestRef op) {
+    auto m = op->get_req<MTimeCheck2>();
+    dout(10) << __func__ << " " << *m << dendl;
+    /* handles PONG's */
+    ceph_assert(m->op == MTimeCheck2::OP_PONG);
+
+    int other = m->get_source().num();
+    if (m->epoch < get_epoch()) {
+        dout(1) << __func__ << " got old timecheck epoch " << m->epoch
+                << " from " << other
+                << " curr " << get_epoch()
+                << " -- severely lagged? discard" << dendl;
+        return;
+    }
+    ceph_assert(m->epoch == get_epoch());
+
+    if (m->round < timecheck_round) {
+        dout(1) << __func__ << " got old round " << m->round
+                << " from " << other
+                << " curr " << timecheck_round << " -- discard" << dendl;
+        return;
+    }
+
+    utime_t curr_time = ceph_clock_now();
+
+    ceph_assert(timecheck_waiting.count(other) > 0);
+    utime_t timecheck_sent = timecheck_waiting[other];
+    timecheck_waiting.erase(other);
+    if (curr_time < timecheck_sent) {
+        // our clock was readjusted -- drop everything until it all makes sense.
+        dout(1) << __func__ << " our clock was readjusted --"
+                << " bump round and drop current check"
+                << dendl;
+        timecheck_cancel_round();
+        return;
+    }
+
+    /* update peer latencies */
+    double latency = (double) (curr_time - timecheck_sent);
+
+    if (timecheck_latencies.count(other) == 0)
+        timecheck_latencies[other] = latency;
+    else {
+        double avg_latency = ((timecheck_latencies[other] * 0.8) + (latency * 0.2));
+        timecheck_latencies[other] = avg_latency;
+    }
+
+    /*
+     * update skews
+     *
+     * some nasty thing goes on if we were to do 'a - b' between two utime_t,
+     * and 'a' happens to be lower than 'b'; so we use double instead.
+     *
+     * latency is always expected to be >= 0.
+     *
+     * delta, the difference between theirs timestamp and ours, may either be
+     * lower or higher than 0; will hardly ever be 0.
+     *
+     * The absolute skew is the absolute delta minus the latency, which is
+     * taken as a whole instead of an rtt given that there is some queueing
+     * and dispatch times involved and it's hard to assess how long exactly
+     * it took for the message to travel to the other side and be handled. So
+     * we call it a bounded skew, the worst case scenario.
+     *
+     * Now, to math!
+     *
+     * Given that the latency is always positive, we can establish that the
+     * bounded skew will be:
+     *
+     *  1. positive if the absolute delta is higher than the latency and
+     *     delta is positive
+     *  2. negative if the absolute delta is higher than the latency and
+     *     delta is negative.
+     *  3. zero if the absolute delta is lower than the latency.
+     *
+     * On 3. we make a judgement call and treat the skew as non-existent.
+     * This is because that, if the absolute delta is lower than the
+     * latency, then the apparently existing skew is nothing more than a
+     * side-effect of the high latency at work.
+     *
+     * This may not be entirely true though, as a severely skewed clock
+     * may be masked by an even higher latency, but with high latencies
+     * we probably have worse issues to deal with than just skewed clocks.
+     */
+    ceph_assert(latency >= 0);
+
+    double delta = ((double) m->timestamp) - ((double) curr_time);
+    double abs_delta = (delta > 0 ? delta : -delta);
+    double skew_bound = abs_delta - latency;
+    if (skew_bound < 0)
+        skew_bound = 0;
+    else if (delta < 0)
+        skew_bound = -skew_bound;
+
+    ostringstream ss;
+    health_status_t status = timecheck_status(ss, skew_bound, latency);
+    if (status != HEALTH_OK) {
+        clog->health(status) << other << " " << ss.str();
+    }
+
+    dout(10) << __func__ << " from " << other << " ts " << m->timestamp
+             << " delta " << delta << " skew_bound " << skew_bound
+             << " latency " << latency << dendl;
+
+    timecheck_skews[other] = skew_bound;
+
+    timecheck_acks++;
+    if (timecheck_acks == quorum.size()) {
+        dout(10) << __func__ << " got pongs from everybody ("
+                 << timecheck_acks << " total)" << dendl;
+        ceph_assert(timecheck_skews.size() == timecheck_acks);
+        ceph_assert(timecheck_waiting.empty());
+        // everyone has acked, so bump the round to finish it.
+        timecheck_finish_round();
+    }
+}
+
+void AbstractMonitor::handle_timecheck_peon(MonOpRequestRef op) {
+    auto m = op->get_req<MTimeCheck2>();
+    dout(10) << __func__ << " " << *m << dendl;
+
+    ceph_assert(is_peon());
+    ceph_assert(m->op == MTimeCheck2::OP_PING || m->op == MTimeCheck2::OP_REPORT);
+
+    if (m->epoch != get_epoch()) {
+        dout(1) << __func__ << " got wrong epoch "
+                << "(ours " << get_epoch()
+                << " theirs: " << m->epoch << ") -- discarding" << dendl;
+        return;
+    }
+
+    if (m->round < timecheck_round) {
+        dout(1) << __func__ << " got old round " << m->round
+                << " current " << timecheck_round
+                << " (epoch " << get_epoch() << ") -- discarding" << dendl;
+        return;
+    }
+
+    timecheck_round = m->round;
+
+    if (m->op == MTimeCheck2::OP_REPORT) {
+        ceph_assert((timecheck_round % 2) == 0);
+        timecheck_latencies.swap(m->latencies);
+        timecheck_skews.swap(m->skews);
+        return;
+    }
+
+    ceph_assert((timecheck_round % 2) != 0);
+    MTimeCheck2 *reply = new MTimeCheck2(MTimeCheck2::OP_PONG);
+    utime_t curr_time = ceph_clock_now();
+    reply->timestamp = curr_time;
+    reply->epoch = m->epoch;
+    reply->round = m->round;
+    dout(10) << __func__ << " send " << *m
+             << " to " << m->get_source_inst() << dendl;
+    m->get_connection()->send_message(reply);
+}
+
+void AbstractMonitor::handle_timecheck(MonOpRequestRef op) {
+    auto m = op->get_req<MTimeCheck2>();
+    dout(10) << __func__ << " " << *m << dendl;
+
+    if (is_leader()) {
+        if (m->op != MTimeCheck2::OP_PONG) {
+            dout(1) << __func__ << " drop unexpected msg (not pong)" << dendl;
+        } else {
+            handle_timecheck_leader(op);
+        }
+    } else if (is_peon()) {
+        if (m->op != MTimeCheck2::OP_PING && m->op != MTimeCheck2::OP_REPORT) {
+            dout(1) << __func__ << " drop unexpected msg (not ping or report)" << dendl;
+        } else {
+            handle_timecheck_peon(op);
+        }
+    } else {
+        dout(1) << __func__ << " drop unexpected msg" << dendl;
+    }
+}

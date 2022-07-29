@@ -70,6 +70,7 @@ enum {
 };
 
 #define COMPAT_SET_LOC "feature_set"
+#define CEPH_MON_PROTOCOL     13 /* cluster internal */
 
 class Service;
 
@@ -212,6 +213,10 @@ public:
 
     bool is_leader() {
         return get_leader() == rank;
+    }
+
+    bool is_peon () {
+        return get_leader() != rank;
     }
 
     virtual void forward_request_leader(MonOpRequestRef op) = 0;
@@ -818,6 +823,12 @@ public:
 
     void handle_timecheck(MonOpRequestRef op);
 
+private:
+
+    void handle_timecheck_leader(MonOpRequestRef op);
+    void handle_timecheck_peon(MonOpRequestRef op);
+
+public:
     /**
      * Returns 'true' if this is considered to be a skew; 'false' otherwise.
      */
