@@ -244,6 +244,13 @@ public:
         return monmap->get_required_features();
     }
 
+    bool is_mon_down() const {
+        int max = monmap->size();
+        int actual = get_quorum().size();
+        auto now = ceph::real_clock::now();
+        return actual < max && now > monmap->created.to_real_time();
+    }
+
     void apply_quorum_to_compatset_features();
 
     void apply_monmap_to_compatset_features();

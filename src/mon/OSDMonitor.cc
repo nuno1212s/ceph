@@ -2839,7 +2839,7 @@ bool OSDMonitor::should_propose(double& delay)
     return true;
   }
 
-  return PaxosService::should_propose(delay);
+  return Service::should_propose(delay);
 }
 
 
@@ -4637,7 +4637,7 @@ int OSDMonitor::get_version(version_t ver, uint64_t features, bufferlist& bl)
   if (inc_osd_cache.lookup({ver, significant_features}, &bl)) {
     return 0;
   }
-  int ret = PaxosService::get_version(ver, bl);
+  int ret = Service::get_version(ver, bl);
   if (ret < 0) {
     return ret;
   }
@@ -4699,7 +4699,7 @@ int OSDMonitor::get_full_from_pinned_map(version_t ver, bufferlist& bl)
   }
 
   if (!has_cached_osdmap) {
-    int err = PaxosService::get_version_full(closest_pinned, osdm_bl);
+    int err = Service::get_version_full(closest_pinned, osdm_bl);
     if (err != 0) {
       derr << __func__ << " closest pinned map ver " << closest_pinned
            << " not available! error: " << cpp_strerror(err) << dendl;
@@ -4782,7 +4782,7 @@ int OSDMonitor::get_version_full(version_t ver, uint64_t features,
   if (full_osd_cache.lookup({ver, significant_features}, &bl)) {
     return 0;
   }
-  int ret = PaxosService::get_version_full(ver, bl);
+  int ret = Service::get_version_full(ver, bl);
   if (ret == -ENOENT) {
     // build map?
     ret = get_full_from_pinned_map(ver, bl);
@@ -4900,7 +4900,7 @@ void OSDMonitor::do_application_enable(int64_t pool_id,
 				       const std::string &app_value,
 				       bool force)
 {
-  ceph_assert(paxos.is_plugged() && is_writeable());
+  ceph_assert(smr_protocol.is_plugged() && is_writeable());
 
   dout(20) << __func__ << ": pool_id=" << pool_id << ", app_name=" << app_name
            << dendl;
@@ -9454,7 +9454,7 @@ int OSDMonitor::prepare_command_osd_new(
   string uuidstr;
   int64_t id = -1;
 
-  ceph_assert(paxos.is_plugged());
+  ceph_assert(smr_protocol.is_plugged());
 
   dout(10) << __func__ << " " << op << dendl;
 
@@ -9769,7 +9769,7 @@ int OSDMonitor::prepare_command_osd_destroy(
     int32_t id,
     stringstream& ss)
 {
-  ceph_assert(paxos.is_plugged());
+  ceph_assert(smr_protocol.is_plugged());
 
   // we check if the osd exists for the benefit of `osd purge`, which may
   // have previously removed the osd. If the osd does not exist, return
@@ -9830,7 +9830,7 @@ int OSDMonitor::prepare_command_osd_destroy(
   pending_inc.new_uuid[id] = uuid_d();
 
   // we can only propose_pending() once per service, otherwise we'll be
-  // defying PaxosService and all laws of nature. Therefore, as we may
+  // defying Service and all laws of nature. Therefore, as we may
   // be used during 'osd purge', let's keep the caller responsible for
   // proposing.
   ceph_assert(err == 0);
@@ -9841,7 +9841,7 @@ int OSDMonitor::prepare_command_osd_purge(
     int32_t id,
     stringstream& ss)
 {
-  ceph_assert(paxos.is_plugged());
+  ceph_assert(smr_protocol.is_plugged());
   dout(10) << __func__ << " purging osd." << id << dendl;
 
   ceph_assert(!osdmap.is_up(id));
@@ -12558,7 +12558,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 
     bool goto_reply = false;
 
-    paxos.plug();
+    smr_protocol.plug();
     if (is_destroy) {
       err = prepare_command_osd_destroy(id, ss);
       // we checked above that it should exist.
@@ -12571,7 +12571,7 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
         goto_reply = true;
       }
     }
-    paxos.unplug();
+    smr_protocol.unplug();
 
     if (err < 0 || goto_reply) {
       goto reply;
@@ -12619,9 +12619,9 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
 
     dout(20) << __func__ << " osd new params " << param_map << dendl;
 
-    paxos.plug();
+    smr_protocol.plug();
     err = prepare_command_osd_new(op, cmdmap, param_map, ss, f.get());
-    paxos.unplug();
+      smr_protocol.unplug();
 
     if (err < 0) {
       goto reply;

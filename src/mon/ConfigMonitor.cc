@@ -730,9 +730,9 @@ update:
   }
   // immediately propose *with* KV mon
   encode_pending_to_kvmon();
-  paxos.plug();
+  smr_protocol.plug();
   mon.kvmon()->propose_pending();
-  paxos.unplug();
+  smr_protocol.unplug();
   force_immediate_propose();
   wait_for_finished_proposal(
     op,
@@ -753,10 +753,10 @@ void ConfigMonitor::tick()
     changed = true;
   }
   if (changed && mon.kvmon()->is_writeable()) {
-    paxos.plug();
+    smr_protocol.plug();
     encode_pending_to_kvmon();
     mon.kvmon()->propose_pending();
-    paxos.unplug();
+    smr_protocol.unplug();
     propose_pending();
   }
 }

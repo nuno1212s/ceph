@@ -1415,7 +1415,7 @@ void PaxosSMR::dispatch(MonOpRequestRef op) {
 
 // -- READ --
 
-bool PaxosSMR::is_readable(version_t v) const {
+bool PaxosSMR::is_readable(version_t v = 0) const {
     bool ret;
     if (v > last_committed)
         ret = false;
@@ -1499,7 +1499,7 @@ void PaxosSMR::cancel_events() {
     }
 }
 
-bool PaxosSMR::is_lease_valid() {
+bool PaxosSMR::is_lease_valid() const {
     return ((mon.get_quorum().size() == 1)
             || (ceph::real_clock::now() < lease_expire));
 }
@@ -1544,20 +1544,6 @@ void PaxosSMR::queue_pending_finisher(Context *onfinished) {
     dout(5) << __func__ << " " << onfinished << dendl;
     ceph_assert(onfinished);
     pending_finishers.push_back(onfinished);
-}
-
-bool PaxosSMR::trigger_propose() {
-    if (plugged) {
-        dout(10) << __func__ << " plugged, not proposing now" << dendl;
-        return false;
-    } else if (is_active()) {
-        dout(10) << __func__ << " active, proposing now" << dendl;
-        propose_pending();
-        return true;
-    } else {
-        dout(10) << __func__ << " not active, will propose later" << dendl;
-        return false;
-    }
 }
 
 bool PaxosSMR::is_consistent() {

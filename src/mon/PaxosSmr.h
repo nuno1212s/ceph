@@ -1132,17 +1132,6 @@ private:
 
     // -- service interface --
     /**
-     * Add c to the list of callbacks waiting for us to become active.
-     *
-     * @param c A callback
-     */
-    void wait_for_active(MonOpRequestRef op, Context *c) override {
-        if (op)
-            op->mark_event("paxos:wait_for_active");
-        waiting_for_active.push_back(c);
-    }
-
-    /**
      * Trim the Paxos state as much as we can.
      */
     void trim();
@@ -1184,7 +1173,7 @@ private:
      *
      * @returns true if the lease is still valid; false otherwise.
      */
-    bool is_lease_valid();
+    bool is_lease_valid() const;
 
     // write
     /**
