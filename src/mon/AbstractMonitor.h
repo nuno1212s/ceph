@@ -218,6 +218,8 @@ public:
 
     virtual std::string get_leader_name() = 0;
 
+    virtual utime_t get_leader_since() = 0;
+
     const std::set<int> &get_quorum() const { return quorum; }
 
     virtual int quorum_age() const = 0;

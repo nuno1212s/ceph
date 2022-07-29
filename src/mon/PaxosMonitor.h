@@ -104,6 +104,10 @@ public:
         return quorum.empty() ? std::string() : monmap->get_name(leader);
     }
 
+    utime_t get_leader_since() override {
+        return leader_since;
+    }
+
     std::map<std::string,std::string> crush_loc;
     bool need_set_crush_loc{false};
 

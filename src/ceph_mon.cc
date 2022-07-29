@@ -60,8 +60,7 @@ using ceph::decode;
 using ceph::encode;
 using ceph::JSONFormatter;
 
-Monitor *mon = NULL;
-
+AbstractMonitor *mon = NULL;
 
 void handle_mon_signal(int signum)
 {
@@ -858,20 +857,22 @@ int main(int argc, const char **argv)
     prefork.exit(1);
   }
 
-  mon = new PaxosMonitor(g_ceph_context, g_conf()->name.get_id(), store,
-		    msgr, mgr_msgr, &monmap);
+  mon = (AbstractMonitor*) new PaxosMonitor(g_ceph_context, g_conf()->name.get_id(), store,
+                                                        msgr, mgr_msgr, &monmap);
 
   mon->orig_argc = argc;
   mon->orig_argv = argv;
 
   if (force_sync) {
-    derr << "flagging a forced sync ..." << dendl;
-    ostringstream oss;
-    JSONFormatter jf(true);
-    mon->sync_force(&jf);
-    derr << "out:\n";
-    jf.flush(*_dout);
-    *_dout << dendl;
+      if (dynamic_cast<PaxosMonitor*> (mon)) {
+          derr << "flagging a forced sync ..." << dendl;
+          ostringstream oss;
+          JSONFormatter jf(true);
+          dynamic_cast<PaxosMonitor*> (mon)->sync_force(&jf);
+          derr << "out:\n";
+                  jf.flush(*_dout);
+                  *_dout << dendl;
+      }
   }
 
   err = mon->preinit();
