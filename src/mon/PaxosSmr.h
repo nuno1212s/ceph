@@ -516,24 +516,24 @@ public:
 
 public:
     PaxosSMR(PaxosMonitor &mon, const std::string &name)
-            : mon(mon),
-              logger(NULL),
-              paxos_name(name),
-              state(STATE_RECOVERING),
+            : state(STATE_RECOVERING),
               first_committed(0),
               last_pn(0),
               last_committed(0),
               accepted_pn(0),
               accepted_pn_from(0),
               num_last(0),
-              uncommitted_v(0), uncommitted_pn(0),
+              uncommitted_v(0),
+              uncommitted_pn(0),
               collect_timeout_event(0),
-              lease_renew_event(0),
-              lease_ack_timeout_event(0),
+              lease_renew_event(0), lease_ack_timeout_event(0),
               lease_timeout_event(0),
               accept_timeout_event(0),
               clock_drift_warned(0),
-              trimming(false) {}
+              trimming(false),
+              mon(mon),
+              logger(NULL),
+              paxos_name(name) {}
 
 
     ~PaxosSMR() override {

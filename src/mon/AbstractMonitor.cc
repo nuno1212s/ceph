@@ -127,7 +127,6 @@ const string AbstractMonitor::MONITOR_STORE_PREFIX = "monitor_store";
 AbstractMonitor::AbstractMonitor(CephContext *cct_, MonitorDBStore *store, string nm, Messenger *m, Messenger *mgr_m, MonMap *map)
         : Dispatcher(cct_),
           AuthServer(cct_),
-          store(store),
           name(nm),
           rank(-1),
           messenger(m),
@@ -136,6 +135,7 @@ AbstractMonitor::AbstractMonitor(CephContext *cct_, MonitorDBStore *store, strin
           finisher(cct_, "mon_finisher", "fin"),
           cpu_tp(cct,
                  "Monitor::cpu_tp", "cpu_tp", g_conf()->mon_cpu_threads),
+          has_ever_joined(false),
           monmap(map),
           log_client(cct_, messenger, monmap, LogClient::FLAG_MON),
           key_server(cct, &keyring
@@ -150,10 +150,10 @@ AbstractMonitor::AbstractMonitor(CephContext *cct_, MonitorDBStore *store, strin
           mgr_client(cct_, mgr_m, monmap),
           gss_ktfile_client(cct->_conf.get_val<std::string>("gss_ktab_client_file")),
           //sessions
+          store(store),
           admin_hook(NULL),
           routed_request_tid(0),
-          op_tracker(cct, g_conf().get_val<bool>("mon_enable_op_tracker"), 1),
-          has_ever_joined(false)
+          op_tracker(cct, g_conf().get_val<bool>("mon_enable_op_tracker"), 1)
 {
     clog = log_client.create_channel(CLOG_CHANNEL_CLUSTER);
     audit_clog = log_client.create_channel(CLOG_CHANNEL_AUDIT);

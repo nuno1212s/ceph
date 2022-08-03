@@ -21,7 +21,7 @@ set(lib_mon_srcs
   ../mds/MDSAuthCaps.cc
   ../mgr/mgr_commands.cc
   ../osd/OSDCap.cc
-  ../mgr/MgrCap.cc Service.cpp Service.h SMRProtocol.cc SMRProtocol.h AbstractMonitor.cc AbstractMonitor.h PaxosMonitor.cc PaxosMonitor.h PaxosSmr.cc PaxosSmr.h)
+  ../mgr/MgrCap.cc Service.cpp Service.h SMRProtocol.h AbstractMonitor.cc AbstractMonitor.h PaxosMonitor.cc PaxosMonitor.h PaxosSmr.cc PaxosSmr.h FebftSmr.cc FebftSmr.h bft/kvdb_rust_interface.h)
 
 if(TARGET mgr_cap_obj)
   list(APPEND lib_mon_srcs $<TARGET_OBJECTS:mgr_cap_obj>)
