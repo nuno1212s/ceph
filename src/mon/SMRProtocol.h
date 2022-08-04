@@ -12,9 +12,19 @@ public:
     virtual void init_logger() = 0;
 
     virtual void init() = 0;
-
+    
+    /**
+     * Check if we are active.
+     *
+     * @return 'true' if we are on the Active state; 'false' otherwise.
+     */
     virtual bool is_active() const = 0;
-
+    
+    /**
+     * Check if we are updating.
+     *
+     * @return 'true' if we are on the Updating state; 'false' otherwise.
+     */
     virtual bool is_updating() const = 0;
     /**
      * Check if a given version is readable.
@@ -39,7 +49,7 @@ public:
      *
      * We are writeable if we are alone (i.e., a quorum of one), or if we match
      * all the following conditions:
-     *  @li We are the Leader
+     *  @li We are the Leader (In the case of Paxos)
      *  @li We are on STATE_ACTIVE
      *  @li We have a valid lease
      *

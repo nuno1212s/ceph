@@ -137,9 +137,11 @@ AbstractMonitor::AbstractMonitor(CephContext *cct_, MonitorDBStore *store, strin
                  "Monitor::cpu_tp", "cpu_tp", g_conf()->mon_cpu_threads),
           has_ever_joined(false),
           monmap(map),
+          logger(NULL),
+          cluster_logger(NULL),
+          cluster_logger_registered(false),
           log_client(cct_, messenger, monmap, LogClient::FLAG_MON),
-          key_server(cct, &keyring
-          ),
+          key_server(cct, &keyring),
           auth_cluster_required(cct,
                                 cct->_conf->auth_supported.empty() ?
                                 cct->_conf->auth_cluster_required : cct->_conf->auth_supported),
