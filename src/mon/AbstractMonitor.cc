@@ -2376,7 +2376,7 @@ void AbstractMonitor::get_cluster_status(stringstream &ss, Formatter *f,
             string spacing(maxlen - 3, ' ');
             const auto quorum_names = get_quorum_names();
             const auto mon_count = monmap->mon_info.size();
-            auto mnow = ceph::mono_clock::now();
+            //auto mnow = ceph::mono_clock::now();
             ss << "    mon: " << spacing << mon_count << " daemons, quorum "
                << quorum_names << " (age " << quorum_age() << ")";
             if (quorum_names.size() != mon_count) {
