@@ -19,7 +19,7 @@
 
 #include "osd/OSDMap.h"
 
-#include "MonitorDBStore.h"
+#include "mon/MonitorDBStore.h"
 
 #include "messages/PaxosServiceMessage.h"
 #include "messages/MMonMap.h"
@@ -60,15 +60,15 @@
 #include "include/ceph_fs.h"
 #include "include/str_list.h"
 
-#include "OSDMonitor.h"
-#include "MDSMonitor.h"
-#include "MonmapMonitor.h"
-#include "LogMonitor.h"
-#include "AuthMonitor.h"
-#include "MgrMonitor.h"
-#include "MgrStatMonitor.h"
-#include "ConfigMonitor.h"
-#include "KVMonitor.h"
+#include "mon/OSDMonitor.h"
+#include "mon/MDSMonitor.h"
+#include "mon/MonmapMonitor.h"
+#include "mon/LogMonitor.h"
+#include "mon/AuthMonitor.h"
+#include "mon/MgrMonitor.h"
+#include "mon/MgrStatMonitor.h"
+#include "mon/ConfigMonitor.h"
+#include "mon/KVMonitor.h"
 #include "mon/HealthMonitor.h"
 #include "common/config.h"
 #include "common/cmdparse.h"
@@ -3594,7 +3594,7 @@ int PaxosMonitor::do_admin_command(
 #define COMMAND_WITH_FLAG(parsesig, helptext, modulename, req_perms, flags) \
   {parsesig, helptext, modulename, req_perms, flags},
 MonCommand mon_commands[] = {
-#include <mon/MonCommands.h>
+#include "mon/MonCommands.h"
 };
 #undef COMMAND
 #undef COMMAND_WITH_FLAG

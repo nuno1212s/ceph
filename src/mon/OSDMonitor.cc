@@ -2714,6 +2714,7 @@ bool OSDMonitor::do_prune(MonitorDBStore::TransactionRef tx)
 // -------------
 
 bool OSDMonitor::preprocess_query(MonOpRequestRef op)
+bool OSDMonitor::preprocess_query(MonOpRequestRef op)
 {
   op->mark_osdmon_event(__func__);
   Message *m = op->get_req();

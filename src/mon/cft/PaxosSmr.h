@@ -1,7 +1,7 @@
 #ifndef CEPH_PAXOSSMR_H
 #define CEPH_PAXOSSMR_H
 
-#include "SMRProtocol.h"
+#include "mon/SMRProtocol.h"
 
 class PaxosMonitor;
 
@@ -577,7 +577,7 @@ public:
     bool is_writing() const override { return state == STATE_WRITING; }
 
     /// @return 'true' if we are writing an update-previous to disk
-    bool is_writing_previous() const override { return state == STATE_WRITING_PREVIOUS; }
+    bool is_writing_previous() const { return state == STATE_WRITING_PREVIOUS; }
 
     /// @return 'true' if we are refreshing an update just committed
     bool is_refresh() const { return state == STATE_REFRESH; }

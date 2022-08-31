@@ -43,7 +43,7 @@
 #include "perfglue/heap_profiler.h"
 
 #include "include/ceph_assert.h"
-#include "mon/PaxosMonitor.h"
+#include "mon/cft/PaxosMonitor.h"
 
 #define dout_subsys ceph_subsys_mon
 

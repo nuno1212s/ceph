@@ -15,7 +15,7 @@
 #include "Elector.h"
 
 #include "common/Timer.h"
-#include "MonitorDBStore.h"
+#include "mon/MonitorDBStore.h"
 #include "messages/MMonElection.h"
 #include "messages/MMonPing.h"
 

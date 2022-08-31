@@ -1,9 +1,14 @@
 #ifndef CEPH_FEBFTSMR_H
 #define CEPH_FEBFTSMR_H
 
-#include "SMRProtocol.h"
+#include "mon/SMRProtocol.h"
 
 class FebftSMR : public SMRProtocol {
+
+protected:
+    std::string name;
+
+    MonitorDBStore::TransactionRef pending_operation;
 
 public:
     void init_logger() override;
@@ -19,8 +24,6 @@ public:
     bool is_writeable() override;
 
     bool is_writing() const override;
-
-    bool is_writing_previous() const override;
 
     void wait_for_active(MonOpRequestRef o, Context *c) override;
 

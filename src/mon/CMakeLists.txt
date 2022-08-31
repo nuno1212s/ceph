@@ -13,7 +13,7 @@ set(lib_mon_srcs
   AuthMonitor.cc
   ConfigMap.cc
   ConfigMonitor.cc
-  Elector.cc
+        cft/Elector.cc
   ElectionLogic.cc
   ConnectionTracker.cc
   HealthMonitor.cc
@@ -21,7 +21,7 @@ set(lib_mon_srcs
   ../mds/MDSAuthCaps.cc
   ../mgr/mgr_commands.cc
   ../osd/OSDCap.cc
-  ../mgr/MgrCap.cc Service.cpp Service.h SMRProtocol.h AbstractMonitor.cc AbstractMonitor.h PaxosMonitor.cc PaxosMonitor.h PaxosSmr.cc PaxosSmr.h FebftSmr.cc FebftSmr.h bft/kvdb_rust_interface.h)
+  ../mgr/MgrCap.cc Service.cpp Service.h SMRProtocol.h AbstractMonitor.cc AbstractMonitor.h cft/PaxosMonitor.cc cft/PaxosMonitor.h cft/PaxosSmr.cc cft/PaxosSmr.h bft/FebftSmr.cc bft/FebftSmr.h bft/febft_rust_interface.h)
 
 if(TARGET mgr_cap_obj)
   list(APPEND lib_mon_srcs $<TARGET_OBJECTS:mgr_cap_obj>)

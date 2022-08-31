@@ -12,14 +12,14 @@ public:
     virtual void init_logger() = 0;
 
     virtual void init() = 0;
-    
+
     /**
      * Check if we are active.
      *
      * @return 'true' if we are on the Active state; 'false' otherwise.
      */
     virtual bool is_active() const = 0;
-    
+
     /**
      * Check if we are updating.
      *
@@ -67,15 +67,6 @@ public:
      * @return 'true' if we are writing; 'false' otherwise
      */
     virtual bool is_writing() const = 0;
-
-    /**
-     * Check if we are currently Writing to disk a previous phase of the SMR protocol
-     *
-     * This is in particular important for the Paxos protocol.
-     *
-     * @return
-     */
-    virtual bool is_writing_previous() const = 0;
 
     /**
      * Add c to the list of callbacks waiting for us to become active.

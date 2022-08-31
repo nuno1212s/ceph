@@ -28,10 +28,6 @@ bool FebftSMR::is_writing() const {
     return false;
 }
 
-bool FebftSMR::is_writing_previous() const {
-    return false;
-}
-
 void FebftSMR::wait_for_active(MonOpRequestRef o, Context *c) {
 
 }
@@ -93,35 +89,49 @@ void FebftSMR::shutdown() {
 }
 
 bool FebftSMR::read(const std::string &key, buffer::list &bl) {
-    return false;
+    if (!get_store()->get(get_name(), key, bl))
+        return false;
+
+    return true;
 }
 
 bool FebftSMR::read(version_t v, buffer::list &bl) {
-    return false;
+    if (!get_store()->get(get_name(), v, bl))
+        return false;
+    return true;
 }
 
 version_t FebftSMR::read_current(buffer::list &bl) {
+    if (read(get_version(), bl))
+        return get_version();
+
     return 0;
 }
 
 int FebftSMR::read_version_from_service(const std::string &service_name, const std::string &key, buffer::list &bl) {
-    return 0;
+    return get_store()->get(service_name, key, bl);
 }
 
 int FebftSMR::read_version_from_service(const std::string &service_name, version_t v, buffer::list &bl) {
-    return 0;
+    return get_store()->get(service_name, v, bl);
 }
 
 version_t FebftSMR::read_current_from_service(const std::string &service_name, const std::string &key) {
-    return 0;
+    return get_store()->get(service_name, key);
 }
 
 bool FebftSMR::exists_in_service(const std::string &service_name, const std::string &key) {
-    return false;
+    return get_store()->exists(service_name, key);
 }
 
 MonitorDBStore::TransactionRef FebftSMR::get_pending_transaction() {
-    return MonitorDBStore::TransactionRef();
+    //We do not need to check if we are the leader, since febft works with clients
+    //And therefore all monitors can propose operations to the SMR
+    if (!pending_operation) {
+        pending_operation.reset(new MonitorDBStore::Transaction);
+    }
+
+    return pending_operation;
 }
 
 bool FebftSMR::trigger_propose() {

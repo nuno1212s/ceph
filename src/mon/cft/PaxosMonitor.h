@@ -1,7 +1,7 @@
 #ifndef CEPH_PAXOSMONITOR_H
 #define CEPH_PAXOSMONITOR_H
 
-#include "AbstractMonitor.h"
+#include "mon/AbstractMonitor.h"
 #include "Elector.h"
 #include "PaxosSmr.h"
 

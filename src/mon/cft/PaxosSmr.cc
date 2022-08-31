@@ -903,6 +903,7 @@ void PaxosSMR::commit_finish() {
 
     if (do_refresh()) {
         commit_proposal();
+
         if (mon.get_quorum().size() > 1) {
             extend_lease();
         }
