@@ -149,3 +149,4 @@ MonitorDBStore *FebftSMR::get_store() {
 std::string FebftSMR::get_name() const {
     return std::string();
 }
+

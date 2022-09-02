@@ -2,11 +2,16 @@
 #define CEPH_FEBFTSMR_H
 
 #include "mon/SMRProtocol.h"
+#include "febft_interface.h"
+#include "febft_rust_interface.h"
+#include "stdlib.h"
 
 class FebftSMR : public SMRProtocol {
 
 protected:
     std::string name;
+
+    CephClient *smr_client;
 
     MonitorDBStore::TransactionRef pending_operation;
 
@@ -84,6 +89,43 @@ private:
     std::string get_name() const override;
 
 };
+
+std::unique_ptr<Transaction>  translate_transaction(MonitorDBStore::TransactionRef t) {
+
+    for (auto it = t->ops.begin(); it != t->ops.end(); ++it) {
+
+        const MonitorDBStore::Op &op = *it;
+
+        switch (op.type) {
+            case MonitorDBStore::Transaction::OP_PUT:
+            {
+
+                auto prefix = op.prefix;
+                auto key = op.key;
+
+                auto data = transform_ceph_buffer_to_rust(op.bl);
+
+                init_write_put_req(prefix.c_str(), key.c_str(), data);
+
+                //auto ceph_req = std::make_unique<CephRequest>(init_write_put_req(op.prefix.c_str(), op.key.c_str(),))
+
+                break;
+            }
+            case MonitorDBStore::Transaction::OP_ERASE: {
+                break;
+            }
+            case MonitorDBStore::Transaction::OP_ERASE_RANGE: {
+                break;
+            }
+            case MonitorDBStore::Transaction::OP_COMPACT: {break;}
+            default: {
+
+            }
+        }
+
+    }
+
+}
 
 
 #endif //CEPH_FEBFTSMR_H
