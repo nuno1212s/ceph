@@ -136,21 +136,21 @@ public:
      * Get the time of the last consensus iteration made by the SMR protocol
      * @return
      */
-    virtual utime_t get_last_commit_time() = 0;
+    virtual utime_t get_last_commit_time() const = 0;
 
     /**
      * Get first committed version
      *
      * @return the first committed version
      */
-    virtual version_t get_first_committed() = 0;
+    virtual version_t get_first_committed() const = 0;
 
     /**
      * Get latest committed version
      *
      * @return latest committed version
      */
-    virtual version_t get_version() = 0;
+    virtual version_t get_version() const = 0;
 
     /**
      * dump state info to a formatter

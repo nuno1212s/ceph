@@ -110,6 +110,14 @@ void ctx_callback(void *context) {
     ctx->complete(0);
 }
 
+/**
+ * Returns a unique ptr to a sized data obj that in turn points to the data stored by a ceph::buffer::list.
+ *
+ * The memory contained within the sized data buffer will remain alive for as long as @param bl is alive.
+ *
+ * @param bl
+ * @return
+ */
 std::unique_ptr<SizedData> transform_ceph_buffer_to_rust(const ceph::buffer::list &bl) {
 
     std::unique_ptr<SizedData> sized_data{new SizedData{(uint8_t *) bl.buffers().front().c_str(), bl.length()}};
@@ -117,10 +125,59 @@ std::unique_ptr<SizedData> transform_ceph_buffer_to_rust(const ceph::buffer::lis
     return sized_data;
 }
 
-ceph::buffer::list transform_rust_buffer_to_ceph(SizedData &data) {
 
+/**
+ * Transforms a rust compatible data buffer into a ceph compatible data buffer
+ *
+ * If @param copy is false, then the underlying memory stored in the ceph::buffer will
+ * be discarded when the sized data data is discarded (this will then depend on where this memory came from initially)
+ *
+ * If @param copy is true, then the underlying memory will be copied and therefore will live for as long as the ceph buffer.
+ *
+ * @param data
+ * @param copy
+ * @return
+ */
+void append_rust_buffer_to_ceph_buffer(SizedData &data, ceph::buffer::list &bl, bool copy = false) {
 
+    if (copy) {
+        auto mem = (char *) malloc(sizeof(char) * data.size);
 
+        memcpy(mem, data.data, data.size);
+
+        bl.append(mem, data.size);
+    } else {
+        bl.append((char *) data.data, data.size);
+    }
+}
+
+/**
+ * Transforms a rust compatible data buffer into a ceph compatible data buffer
+ *
+ * If @param copy is false, then the underlying memory stored in the ceph::buffer will
+ * be discarded when the sized data data is discarded (this will then depend on where this memory came from initially)
+ *
+ * If @param copy is true, then the underlying memory will be copied and therefore will live for as long as the ceph buffer.
+ *
+ * @param data
+ * @param copy
+ * @return
+ */
+ceph::buffer::list transform_rust_buffer_to_ceph(SizedData &data, bool copy = false) {
+
+    ceph::buffer::list bl;
+
+    if (copy) {
+        auto mem = (char *) malloc(sizeof(char) * data.size);
+
+        memcpy(mem, data.data, data.size);
+
+        bl.append(mem, data.size);
+    } else {
+        bl.append((char *) data.data, data.size);
+    }
+
+    return bl;
 }
 
 #endif //CEPH_FEBFT_RUST_INTERFACE_H
