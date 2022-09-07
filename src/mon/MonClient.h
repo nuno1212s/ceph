@@ -361,7 +361,7 @@ private:
 
     bool ms_dispatch(Message *m) override;
 
-    bool ms_dispatch2(Message *m);
+    bool ms_dispatch_(Message *m);
 
     bool ms_handle_reset(Connection *con) override;
 

@@ -380,7 +380,7 @@ bool MonClient::ms_dispatch(Message *m) {
     return true;
 }
 
-bool MonClient::ms_dispatch2(Message *m) {
+bool MonClient::ms_dispatch_(Message *m) {
     // we only care about these message types
     switch (m->get_type()) {
         case CEPH_MSG_MON_MAP:
