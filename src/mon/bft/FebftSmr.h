@@ -41,9 +41,22 @@ public:
     FebftSMR(FebftMonitor &mon, const std::string &name);
 
 public:
+
+    bool is_init() const;
+
+    bool is_shutdown() const;
+
     void init_logger() override;
 
     void init() override;
+
+    epoch_t get_epoch();
+
+    int quorum_age();
+
+    int get_leader();
+
+    utime_t get_leader_since();
 
     bool is_active() const override;
 

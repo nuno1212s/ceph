@@ -180,4 +180,13 @@ ceph::buffer::list transform_rust_buffer_to_ceph(SizedData &data, bool copy = fa
     return bl;
 }
 
+utime_t translate_time(uint64_t time_in_ms) {
+
+    uint32_t seconds = time_in_ms / 1000;
+
+    uint32_t nanos = time_in_ms - seconds;
+
+    return {seconds, static_cast<int>(nanos)};
+}
+
 #endif //CEPH_FEBFT_RUST_INTERFACE_H

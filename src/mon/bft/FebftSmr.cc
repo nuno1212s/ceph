@@ -41,15 +41,39 @@ FebftSMR::FebftSMR(FebftMonitor &mon, const std::string &name) : name(name), mon
     smr_client = init_client(replica_id, n, f, ctx_callback);
 }
 
-void FebftSMR::init_logger() {
-
+bool FebftSMR::is_init() const {
+    return smr_client != nullptr;
 }
 
-void FebftSMR::init() {
+bool FebftSMR::is_shutdown() const {
+    return smr_client == nullptr;
+}
 
+void FebftSMR::init_logger() {  }
+
+void FebftSMR::init() {
     this->replica = ::init_replica(this->replica_id);
 
     this->smr_client = ::init_client(this->replica_id, 4, 1, ::ctx_callback);
+}
+
+epoch_t FebftSMR::get_epoch() {
+    return ::get_view_seq(this->smr_client);
+}
+
+int FebftSMR::quorum_age() {
+    auto age = std::chrono::duration_cast<std::chrono::seconds>(
+            ceph::mono_clock::now() - get_leader_since());
+
+    return age.count();
+}
+
+int FebftSMR::get_leader() {
+    return ::get_leader(this->smr_client);
+}
+
+utime_t FebftSMR::get_leader_since() {
+    return translate_time(::get_leader_since(this->smr_client));
 }
 
 bool FebftSMR::is_active() const {

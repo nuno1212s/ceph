@@ -512,7 +512,7 @@ public:
 
 protected:
 
-    //ms_dispatch handles a lot of logic and we want to reuse it
+    //ms_dispatch handles a lot of logic so we want to reuse it
     //on forwarded messages, so we create a non-locking version for this class
     virtual void _ms_dispatch(Message *m) = 0;
 

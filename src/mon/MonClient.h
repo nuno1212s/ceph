@@ -212,6 +212,7 @@ struct MonClientPinger : public Dispatcher,
         return true;
     }
 
+
     bool ms_handle_reset(Connection *con) override {
         std::lock_guard l(lock);
         done = true;
@@ -325,12 +326,15 @@ private:
      */
     ceph::mutex cons_lock = ceph::make_mutex("MonClient::cons_lock");
 
-    /**
-     * Each connection has an associated mutex, that must be locked in order for the connection to be utilized
-     */
-    std::map<std::string, ceph::mutex> cons_mutexes;
-
     std::map<std::string, std::unique_ptr<MonConnection>> active_cons;
+
+    /**
+     * The amount of ceph monitor failures we want to support.
+     * In CFT (paxos), this can be 0 as if the monitor does not respond we just connect to the next one.
+     * In BFT we need at least 2f + 1 connections so we can verify the validity of the responses
+     * (We need f + 1 equal responses to verify)
+     */
+    int f;
 
     std::unique_ptr<MonConnection> active_con;
     std::map<entity_addrvec_t, MonConnection> pending_cons;
@@ -349,21 +353,35 @@ private:
     LogClient *log_client;
     bool more_log_pending;
 
+    int get_needed_connections() {
+        return 2 * f + 1;
+    }
+
     void send_log(bool flush = false);
 
     bool ms_dispatch(Message *m) override;
 
+    bool ms_dispatch2(Message *m);
+
     bool ms_handle_reset(Connection *con) override;
 
+    bool ms_handle_reset2(Connection *con);
+
     void ms_handle_remote_reset(Connection *con) override {}
+
+    void ms_handle_remote_reset2(Connection *con);
 
     bool ms_handle_refused(Connection *con) override { return false; }
 
     void handle_monmap(MMonMap *m);
 
+    void handle_monmap2(MMonMap *m);
+
     void handle_config(MConfig *m);
 
     void handle_auth(MAuthReply *m);
+
+    void handle_auth2(MAuthReply *m);
 
     // monitor session
     utime_t last_keepalive;
@@ -410,6 +428,8 @@ private:
 
     void _reopen_session(int rank = -1);
 
+    void _reopen_session2(std::string &mon_id, int rank = -1);
+
     void _add_conn(unsigned rank);
 
     void _add_conns();
@@ -428,6 +448,15 @@ private:
             }
         }
         return pending_cons.end();
+    }
+
+    std::map<std::string, std::unique_ptr<MonConnection>>::iterator _find_con(const ConnectionRef &con) {
+        for (auto i = active_cons.begin(); i != active_cons.end(); i++) {
+            if (i->second->get_con() == con) {
+                return i;
+            }
+        }
+        return active_cons.end();
     }
 
 public:
@@ -484,6 +513,8 @@ public:
     int wait_auth_rotating(double timeout);
 
     int authenticate(double timeout = 0.0);
+
+    int authenticate2(double timeout = 0.0);
 
     bool is_authenticated() const { return authenticated; }
 

@@ -9,6 +9,8 @@
 /// The current version of the wire protocol.
 static const uint32_t WireMessage_CURRENT_VERSION = 0;
 
+/// The current version of the wire protocol.
+static const uint32_t WireMessage_CURRENT_VERSION = 0;
 
 struct CephClient;
 
@@ -88,6 +90,12 @@ uint64_t get_first_committed(CephClient *client);
 uint64_t get_last_committed(CephClient *client);
 
 uint64_t get_last_committed_time(CephClient *client);
+
+uint32_t get_leader(CephClient *client);
+
+uint64_t get_leader_since(CephClient *client);
+
+uint32_t get_view_seq(CephClient *client);
 
 void *init(size_t threadpool_threads, size_t async_threads);
 

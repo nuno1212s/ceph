@@ -172,6 +172,34 @@ FebftMonitor::FebftMonitor(CephContext *cct_, std::string nm, MonitorDBStore *st
     leader_mon_commands = local_mon_commands;
 }
 
+std::string FebftMonitor::get_leader_name() {
+    return monmap->get_name(get_leader());
+}
+
+int FebftMonitor::get_leader() const {
+    return febft->get_leader();
+}
+
+utime_t FebftMonitor::get_leader_since() {
+    return febft->get_leader_since();
+}
+
+epoch_t FebftMonitor::get_epoch() {
+    return febft->get_epoch();
+}
+
+int FebftMonitor::quorum_age() const {
+    return febft->quorum_age();
+}
+
+bool FebftMonitor::is_init() const {
+    return febft->is_init();
+}
+
+bool FebftMonitor::is_shutdown() const {
+    return febft->is_shutdown();
+}
+
 int FebftMonitor::preinit() {
 
     std::unique_lock l(lock);
@@ -203,7 +231,7 @@ int FebftMonitor::preinit() {
 
     if (!has_ever_joined) {
         // impose initial quorum restrictions?
-        list<string> initial_members;
+        list <string> initial_members;
         get_str_list(g_conf()->mon_initial_members, initial_members);
 
         if (!initial_members.empty()) {
@@ -475,7 +503,7 @@ int FebftMonitor::do_admin_command(std::string_view command, const cmdmap_t &cmd
             r = -ENOENT;
             goto abort;
         }
-        set<string> devnames;
+        set <string> devnames;
         get_raw_devices(devname, &devnames);
         json_spirit::mObject json_map;
         uint64_t smart_timeout = cct->_conf.get_val<uint64_t>(
@@ -509,7 +537,7 @@ int FebftMonitor::do_admin_command(std::string_view command, const cmdmap_t &cmd
             r = -EINVAL;
             goto abort;
         }
-        std::vector<std::string> cmd_vec;
+        std::vector <std::string> cmd_vec;
         get_str_vec(cmd, cmd_vec);
         string val;
         if (cmd_getval(cmdmap, "value", val)) {
@@ -609,7 +637,7 @@ void FebftMonitor::_quorum_status(ceph::Formatter *f, ostream &ss) {
         f->dump_int("mon", *p);
     f->close_section(); // quorum
 
-    list<string> quorum_names = get_quorum_names();
+    list <string> quorum_names = get_quorum_names();
     f->open_array_section("quorum_names");
     for (list<string>::iterator p = quorum_names.begin(); p != quorum_names.end(); ++p)
         f->dump_string("mon", *p);
@@ -660,7 +688,7 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
     }
 
     string prefix;
-    vector<string> fullcmd;
+    vector <string> fullcmd;
     cmdmap_t cmdmap;
     stringstream ss, ds;
     bufferlist rdata;
@@ -694,7 +722,7 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
         bufferlist rdata;
         Formatter *f = Formatter::create("json");
 
-        std::vector<MonCommand> commands = static_cast<MgrMonitor *>(
+        std::vector <MonCommand> commands = static_cast<MgrMonitor *>(
                 services[PAXOS_MGR].get())->get_command_descs();
 
         for (auto &c: leader_mon_commands) {
@@ -711,7 +739,7 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
     dout(0) << "handle_command " << *m << dendl;
 
     string format = ceph::common::cmd_getval_or<string>(cmdmap, "format", "plain");
-    boost::scoped_ptr<Formatter> f(Formatter::create(format));
+    boost::scoped_ptr <Formatter> f(Formatter::create(format));
 
     get_str_vec(prefix, fullcmd);
 
@@ -801,7 +829,7 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
             (mon_cmd->requires_perm('w') || mon_cmd->requires_perm('x'));
 
     // validate user's permissions for requested command
-    map<string, string> param_str_map;
+    map <string, string> param_str_map;
 
     // Catch bad_cmd_get exception if _generate_command_map() throws it
     try {
@@ -871,7 +899,8 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
         mgr_proxy_bytes += size;
         dout(10) << __func__ << " proxying mgr command (+" << size
                  << " -> " << mgr_proxy_bytes << ")" << dendl;
-        C_MgrProxyCommand *fin = new C_MgrProxyCommand((AbstractMonitor *) this, op, size);
+        C_MgrProxyCommand * fin = new C_MgrProxyCommand((AbstractMonitor * )
+        this, op, size);
         mgr_client.start_command(m->cmd,
                                  m->get_data(),
                                  &fin->outbl,
@@ -1056,7 +1085,7 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
         f->dump_string("commit", git_version_to_str());
         f->dump_stream("timestamp") << ceph_clock_now();
 
-        vector<string> tagsvec;
+        vector <string> tagsvec;
         cmd_getval(cmdmap, "tags", tagsvec);
         string tagstr = str_join(tagsvec, " ");
         if (!tagstr.empty())
@@ -1211,12 +1240,12 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
         rs = "";
         r = 0;
     } else if (prefix == "mon ok-to-stop") {
-        vector<string> ids, invalid_ids;
+        vector <string> ids, invalid_ids;
         if (!cmd_getval(cmdmap, "ids", ids)) {
             r = -EINVAL;
             goto out;
         }
-        set<string> wouldbe;
+        set <string> wouldbe;
         for (auto rank: quorum) {
             wouldbe.insert(monmap->get_name(rank));
         }
@@ -1500,6 +1529,9 @@ void FebftMonitor::tick() {
     }
 
     // trim sessions
+    /*
+     * This has been commented out since in febft we don't allow replicas
+     * To go out of the quorum, so this in theory will never happens
     {
         std::lock_guard l(session_map_lock);
         auto p = session_map.sessions.begin();
@@ -1539,11 +1571,9 @@ void FebftMonitor::tick() {
         }
     }
 
-    sync_trim_providers();
-
     if (!maybe_wait_for_quorum.empty()) {
         finish_contexts(g_ceph_context, maybe_wait_for_quorum);
-    }
+    }*/
 
     if (is_leader() && febft->is_active() && fingerprint.is_zero()) {
         // this is only necessary on upgraded clusters.
@@ -1589,8 +1619,8 @@ void FebftMonitor::shutdown() {
         svc->shutdown();
     }
 
-    finish_contexts(g_ceph_context, waitfor_quorum, -ECANCELED);
-    finish_contexts(g_ceph_context, maybe_wait_for_quorum, -ECANCELED);
+    //finish_contexts(g_ceph_context, waitfor_quorum, -ECANCELED);
+    //finish_contexts(g_ceph_context, maybe_wait_for_quorum, -ECANCELED);
 
     timer.shutdown();
 
@@ -1619,3 +1649,32 @@ void FebftMonitor::shutdown() {
         cluster_logger = NULL;
     }
 }
+
+
+bool is_stretch_mode() { return false; }
+
+bool is_degraded_stretch_mode() { return false; }
+
+bool is_recovering_stretch_mode() { return false; }
+
+void try_engage_stretch_mode() {}
+
+void maybe_go_degraded_stretch_mode() {}
+
+void trigger_degraded_stretch_mode(const std::set <std::string> &dead_mons,
+                                   const std::set<int> &dead_buckets) {}
+
+void set_degraded_stretch_mode() {}
+
+void go_recovery_stretch_mode() {}
+
+void set_recovery_stretch_mode() {}
+
+void trigger_healthy_stretch_mode() {}
+
+void set_healthy_stretch_mode() {}
+
+//This is also not implemented in regular ceph
+void enable_stretch_mode() {};
+
+void set_mon_crush_location(const std::string &loc) {};
