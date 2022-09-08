@@ -583,6 +583,7 @@ class MonitorDBStore
     if (err < 0)
       return false;
 
+    return true;
   }
 
   bool exists(const std::string& prefix, version_t ver) {

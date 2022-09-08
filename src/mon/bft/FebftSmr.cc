@@ -10,15 +10,12 @@ using ceph::to_timespan;
 
 #define dout_subsys ceph_subsys_mon
 #undef dout_prefix
-#define dout_prefix _prefix(_dout, mon, mon.name, mon.rank, paxos_name, state, first_committed, last_committed)
-
+#define dout_prefix _prefix(_dout, mon, mon.name, mon.rank, name)
 static std::ostream &_prefix(std::ostream *_dout, FebftMonitor &mon, const string &name,
-                             int rank, const string &febft_name, int state,
-                             version_t first_committed, version_t last_committed) {
+                             int rank, const string &febft_name) {
     return *_dout << "mon." << name << "@" << rank
                   << "(" << mon.get_state_name() << ")"
-                  << ".paxos(" << febft_name << " "
-                  << " c " << first_committed << ".." << last_committed
+                  << ".febft(" << febft_name << " "
                   << ") ";
 }
 
@@ -62,10 +59,7 @@ epoch_t FebftSMR::get_epoch() {
 }
 
 int FebftSMR::quorum_age() {
-    auto age = std::chrono::duration_cast<std::chrono::seconds>(
-            ceph::mono_clock::now() - get_leader_since());
-
-    return age.count();
+    return ::get_quorum_age(this->smr_client);
 }
 
 int FebftSMR::get_leader() {
@@ -92,11 +86,10 @@ bool FebftSMR::is_readable(version_t v) const {
         ret =
                 (mon.is_peon() || mon.is_leader()) &&
                 (is_active() || is_updating() || is_writing()) &&
-                last_committed > 0 && is_lease_valid(); // must have a value alone, or have lease
+                get_version() > 0; // must have a value alone, or have lease
+
     dout(5) << __func__ << " = " << (int) ret
             << " - now=" << ceph_clock_now()
-            << " lease_expire=" << lease_expire
-            << " has v" << v << " lc " << last_committed
             << dendl;
     return ret;
 }
@@ -172,9 +165,7 @@ utime_t FebftSMR::get_last_commit_time() const {
 
     auto time = ::get_last_committed_time(this -> smr_client);
 
-
-
-    utime_t()
+    return translate_time(time);
 }
 
 version_t FebftSMR::get_first_committed() const {
@@ -299,7 +290,10 @@ version_t FebftSMR::read_current_from_service(const std::string &service_name, c
 }
 
 bool FebftSMR::exists_in_service(const std::string &service_name, const std::string &key) {
-    return get_store()->exists(service_name, key);
+
+    ceph::buffer::list bl;
+
+    return read_version_from_service(service_name, key, bl) == 0;
 }
 
 MonitorDBStore::TransactionRef FebftSMR::get_pending_transaction() {

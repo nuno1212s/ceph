@@ -1,13 +1,12 @@
+#ifndef CEPH_FEBFT_INTERFACE_H
+#define CEPH_FEBFT_INTERFACE_H
+
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <ostream>
 #include <new>
-
-
-/// The current version of the wire protocol.
-static const uint32_t WireMessage_CURRENT_VERSION = 0;
 
 /// The current version of the wire protocol.
 static const uint32_t WireMessage_CURRENT_VERSION = 0;
@@ -29,46 +28,17 @@ struct SeqNo;
 ///Strict log mode initializer
 struct StrictPersistentLog;
 
-///Strict log mode initializer
-struct StrictPersistentLog;
-
 /// Request Message List This has to exist because ceph handles things by having a global transaction where all servers dump their info and then Proposing this transaction (with many operations). This is kind of done by febft with its batching, so it would almost make sense to have one client per service, but that would probably require a pretty decent change so it's much easier if we also just support lists of requests on the SMR level
 struct Transaction;
 
 struct TransactionReply;
 
+using CallbackContext = void(*)(void *context);
+
 struct SizedData {
   const uint8_t *data;
   size_t size;
 };
-
-using SetFunction = void(*)(void *db, char *prefix, char *key, SizedData data);
-
-using GetFunction = SizedData(*)(void *db, char *prefix, char *key);
-
-using RmKeyFunction = void(*)(void *db, char *prefix, char *key);
-
-using RmKeyRangeFunction = void(*)(void *db, char *prefix, char *start, char *end);
-
-using CompactPrefixFunction = void(*)(void *db, char *prefix);
-
-using CompactRangeFunction = void(*)(void *db, char *prefix, char *start, char *end);
-
-struct KeyValueDB {
-  void *db;
-  SetFunction set_f;
-  GetFunction get_f;
-  RmKeyFunction rm_key_f;
-  RmKeyRangeFunction rm_range_f;
-  CompactPrefixFunction compact_prefix_f;
-  CompactRangeFunction compact_range_f;
-};
-
-using CallbackContext = void(*)(void *context);
-
-
-
-
 
 
 extern "C" {
@@ -95,17 +65,11 @@ uint32_t get_leader(CephClient *client);
 
 uint64_t get_leader_since(CephClient *client);
 
+uint64_t get_quorum_age(CephClient *client);
+
 uint32_t get_view_seq(CephClient *client);
 
 void *init(size_t threadpool_threads, size_t async_threads);
-
-KeyValueDB *initKVDB(void *db,
-                     SetFunction set,
-                     GetFunction get,
-                     RmKeyFunction rm_key,
-                     RmKeyRangeFunction rm_range,
-                     CompactPrefixFunction compact_prefix,
-                     CompactRangeFunction compact_range);
 
 ///Initialize a febft client
 ///Ceph will then use this client to propose operations on the SMR
@@ -156,7 +120,7 @@ void queue_finisher(CephClient *client, void *context);
 /// as the transaction reply
 SizedData read_read_response_from(TransactionReply *response);
 
-void shutdown(void *guard);
+//void shutdown(void *guard);
 
 void wait_for_active(CephClient *client, void *context);
 
@@ -165,3 +129,5 @@ void wait_for_readable(CephClient *client, void *context);
 void wait_for_writeable(CephClient *client, void *context);
 
 } // extern "C"
+
+#endif

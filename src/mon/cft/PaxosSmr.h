@@ -611,15 +611,15 @@ public:
 
     void dispatch(MonOpRequestRef op) override;
 
-    utime_t get_last_commit_time() override {
+    utime_t get_last_commit_time() const override {
         return last_commit_time;
     }
 
-    version_t get_first_committed() override {
+    version_t get_first_committed() const override {
         return first_committed;
     }
 
-    version_t get_version() override {
+    version_t get_version() const override {
         return last_committed;
     }
 

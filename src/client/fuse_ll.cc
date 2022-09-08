@@ -1371,9 +1371,9 @@ const static struct fuse_lowlevel_ops fuse_ll_oper = {
 CephFuse::Handle::Handle(Client *c, int fd) :
   fd_on_success(fd),
   client(c),
-  se(NULL),
+  se(NULL)
 #if FUSE_VERSION < FUSE_MAKE_VERSION(3, 0)
-  ch(NULL),
+  , ch(NULL),
   mountpoint(NULL)
 #endif
 {
