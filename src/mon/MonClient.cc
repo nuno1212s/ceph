@@ -690,11 +690,12 @@ void MonClient::shutdown() {
 }
 
 
-int MonClient::authenticate2(double timeout) {
+int MonClient::authenticate2(int mon_rank, double timeout) {
     std::unique_lock lock{monc_lock};
 
-    if (active_cons.size() > get_needed_connections()) {
-        ldout(cct, 5) << "already authenticated" << dendl;
+    auto auth_con = auth_data_per_mon.find(mon_rank);
+
+    if (auth_con == auth_data_per_mon.end()) {
         return 0;
     }
 
@@ -709,21 +710,24 @@ int MonClient::authenticate2(double timeout) {
     if (timeout > 0.0)
         ldout(cct, 10) << "authenticate will time out at " << until << dendl;
 
-    while (!active_con && authenticate_err >= 0) {
+    while (active_cons.find(mon_rank) == active_cons.end()
+           && authenticate_err >= 0) {
         if (timeout > 0.0) {
-            auto r = auth_cond.wait_until(lock, until);
+            auto r = auth_con->second.auth_cond.wait_until(lock, until);
             if (r == std::cv_status::timeout && !active_con) {
                 ldout(cct, 0) << "authenticate timed out after " << timeout << dendl;
                 authenticate_err = -ETIMEDOUT;
             }
         } else {
-            auth_cond.wait(lock);
+            auth_con->second.auth_cond.wait(lock);
         }
     }
 
-    if (active_con) {
+    auto con = active_cons.find(mon_rank);
+
+    if (con != active_cons.end()) {
         ldout(cct, 5) << __func__ << " success, global_id "
-                      << active_con->get_global_id() << dendl;
+                      << con->second->get_global_id() << dendl;
         // active_con should not have been set if there was an error
         ceph_assert(authenticate_err >= 0);
         authenticated = true;
@@ -800,18 +804,31 @@ void MonClient::handle_auth2(MAuthReply *m) {
         return;
     }
 
+    int rank = _get_rank(m->get_source_addrs());
+
+    auto conn = active_cons.find(rank);
+
     if (!_hunting()) {
-        std::swap(active_con->get_auth(), auth);
-        int ret = active_con->authenticate(m);
+
+        auto it = auth_data_per_mon.find(rank);
+
+        std::swap(conn->second->get_auth(), auth);
+
+//        std::swap(active_con->get_auth(), auth);
+        int ret = conn->second->authenticate(m);
         m->put();
-        std::swap(auth, active_con->get_auth());
-        if (global_id != active_con->get_global_id()) {
+        std::swap(auth, conn->second->get_auth());
+
+//        std::swap(auth, active_con->get_auth());
+        if (it->second.global_id != conn->second->get_global_id()) {
             lderr(cct) << __func__ << " peer assigned me a different global_id: "
-                       << active_con->get_global_id() << dendl;
+                       << conn->second->get_global_id() << dendl;
         }
+
         if (ret != -EAGAIN) {
             _finish_auth(ret);
         }
+
         return;
     }
 
@@ -834,12 +851,13 @@ void MonClient::handle_auth2(MAuthReply *m) {
     } else {
         auto &mc = found->second;
         ceph_assert(mc.have_session());
-        active_con.reset(new MonConnection(std::move(mc)));
-        pending_cons.clear();
+
+        active_cons.insert(std::make_pair<>(rank, std::make_unique<MonConnection>(std::move(mc))));
+        pending_cons.erase(found);
     }
 
     _finish_hunting(auth_err);
-    _finish_auth(auth_err);
+    _finish_auth2(rank, auth_err);
 }
 
 void MonClient::handle_auth(MAuthReply *m) {
@@ -903,6 +921,26 @@ void MonClient::handle_auth(MAuthReply *m) {
     _finish_auth(auth_err);
 }
 
+void MonClient::_finish_auth2(int rank, int auth_err) {
+
+    auto auth_data = auth_data_per_mon.find(rank);
+
+    if (auth_data == auth_data_per_mon.end()) {
+        ldout(cct, 10) << __func__ << " " << auth_err << dendl;
+        return;
+    }
+
+    auth_data->second.authenticate_err = auth_err;
+
+    if (!auth_err && active_cons.find(rank) != active_cons.end()) {
+        ceph_assert(auth);
+
+        _check_auth_tickets();
+    }
+
+    auth_data->second.auth_cond.notify_all();
+}
+
 void MonClient::_finish_auth(int auth_err) {
     ldout(cct, 10) << __func__ << " " << auth_err << dendl;
     authenticate_err = auth_err;
@@ -912,6 +950,7 @@ void MonClient::_finish_auth(int auth_err) {
         ceph_assert(auth);
         _check_auth_tickets();
     }
+
     auth_cond.notify_all();
 }
 
@@ -943,19 +982,16 @@ void MonClient::_send_mon_message(MessageRef m) {
 }
 
 
-void MonClient::_send_mon_message2(std::string &mon_id, MessageRef m) {
+void MonClient::_send_mon_message2(int rank, MessageRef m) {
 
-    if (this->active_cons.find(mon_id) == this->active_cons.end()) {
-        ldout(cct, 10) << __func__ << " Failed to send message to monitor " << mon_id << " as it's not currently online"
+    if (this->active_cons.find(rank) == this->active_cons.end()) {
+        ldout(cct, 10) << __func__ << " Failed to send message to monitor " << rank << " as it's not currently online"
                        << dendl;
 
-        //Force a copy of the mon id string
-        std::string mon_id_clone = mon_id;
-
         waiting_for_session_per_mon.push_back(
-                std::make_pair<std::string, MessageRef>(std::move(mon_id_clone), std::move(m)));
+                std::make_pair<int, MessageRef>(std::move(rank), std::move(m)));
     } else {
-        auto cur_con = this->active_cons.find(mon_id)->second->get_con();
+        auto cur_con = this->active_cons.find(rank)->second->get_con();
 
         ldout(cct, 10) << "_send_mon_message to mon."
                        << monmap.get_name(cur_con->get_peer_addr())
@@ -965,17 +1001,14 @@ void MonClient::_send_mon_message2(std::string &mon_id, MessageRef m) {
     }
 }
 
-void MonClient::_reopen_session2(std::string &mon_id, int rank) {
+void MonClient::_reopen_session2(int rank) {
 
     ceph_assert(ceph_mutex_is_locked(monc_lock));
     ldout(cct, 10) << __func__ << " rank " << rank << dendl;
 
-    active_cons.erase(mon_id);
+    active_cons.erase(rank);
 
-    int currently_active_cons = active_cons.size();
-
-    if (currently_active_cons > get_needed_connections()) {
-        //We still have enough open connections, don't need to open any more
+    if (_has_enough_conns()) {
         return;
     }
 
@@ -1014,7 +1047,8 @@ void MonClient::_reopen_session(int rank) {
     ceph_assert(ceph_mutex_is_locked(monc_lock));
     ldout(cct, 10) << __func__ << " rank " << rank << dendl;
 
-    active_con.reset();
+    active_cons.erase(rank);
+
     pending_cons.clear();
 
     authenticate_err = 1;  // == in progress
@@ -1044,6 +1078,20 @@ void MonClient::_reopen_session(int rank) {
     if (sub.reload()) {
         _renew_subs();
     }
+}
+
+void MonClient::_add_conn2(unsigned rank) {
+    auto peer = monmap.get_addrs(rank);
+    auto conn = messenger->connect_to_mon(peer);
+    MonConnection mc(cct, conn, global_id, &auth_registry);
+    if (auth) {
+        mc.get_auth().reset(auth->clone());
+    }
+    pending_cons.insert(std::make_pair(peer, std::move(mc)));
+    ldout(cct, 10) << "picked mon." << monmap.get_name(rank)
+                   << " con " << conn
+                   << " addr " << peer
+                   << dendl;
 }
 
 void MonClient::_add_conn(unsigned rank) {
@@ -1178,6 +1226,8 @@ bool MonClient::ms_handle_reset2(Connection *con) {
         return true;
     }
 
+    int rank = _get_rank(con->get_peer_addrs());
+
     if (_hunting()) {
         if (pending_cons.count(con->get_peer_addrs())) {
             ldout(cct, 10) << __func__ << " hunted mon " << con->get_peer_addrs()
@@ -1188,11 +1238,12 @@ bool MonClient::ms_handle_reset2(Connection *con) {
         }
         return true;
     } else {
+
         if (!active_cons.empty() && _find_con(con) != active_cons.end()) {
             ldout(cct, 10) << __func__ << " current mon " << con->get_peer_addrs()
                            << dendl;
             //TODO: this shouldn't cause a full reindex but that is for a later time
-            _reopen_session();
+            _reopen_session(rank);
             return false;
         } else {
             ldout(cct, 10) << "ms_handle_reset stray mon " << con->get_peer_addrs()
@@ -1205,6 +1256,18 @@ bool MonClient::ms_handle_reset2(Connection *con) {
 bool MonClient::_opened() const {
     ceph_assert(ceph_mutex_is_locked(monc_lock));
     return active_con || _hunting();
+}
+
+bool MonClient::_opened2() const {
+    ceph_assert(ceph_mutex_is_locked(monc_lock));
+
+    return _has_enough_conns() || _hunting();
+}
+
+bool MonClient::_has_enough_conns() const {
+    ceph_assert(ceph_mutex_is_locked(monc_lock));
+
+    return active_cons.size() > get_needed_connections();
 }
 
 bool MonClient::_hunting() const {
@@ -1224,13 +1287,22 @@ void MonClient::_start_hunting() {
     }
 }
 
-void MonClient::_finish_hunting(int auth_err) {
+void MonClient::_finish_hunting2(int rank, int auth_err) {
+
     ldout(cct, 10) << __func__ << " " << auth_err << dendl;
     ceph_assert(ceph_mutex_is_locked(monc_lock));
     // the pending conns have been cleaned.
-    ceph_assert(!_hunting());
-    if (active_con) {
-        auto con = active_con->get_con();
+    if (!_hunting()) {
+        return;
+    }
+
+    had_a_connection = true;
+    _un_backoff();
+
+    auto active_con = active_cons.find(rank);
+
+    if (active_con != active_cons.end() && active_con->second) {
+        auto con = active_con->second->get_con();
         ldout(cct, 1) << "found mon."
                       << monmap.get_name(con->get_peer_addr())
                       << dendl;
@@ -1243,19 +1315,71 @@ void MonClient::_finish_hunting(int auth_err) {
 
     if (!auth_err) {
         last_rotating_renew_sent = utime_t();
+        send_log(true);
+        if (active_con != active_cons.end() && active_con->second) {
+
+            auto auth_data = auth_data_per_mon.find(rank);
+
+            if (auth_data == auth_data_per_mon.end()) {
+                //auth_data = auth_data_per_mon.insert(std::make_pair<int, MonAuthData>(rank, MonClient::MonAuthData()));
+                //TODO: Insert the auth data here
+            }
+
+            //TODO: What to do here????
+//            auth_data->second.auth = std::move(active_con->second->get_auth());
+
+            if (auth_data->second.global_id && auth_data->second.global_id != active_con->second->get_global_id()) {
+                lderr(cct) << __func__ << " global_id changed from " << auth_data->second.global_id
+                           << " to " << active_con->second->get_global_id() << dendl;
+            }
+
+            auth_data->second.global_id = active_con->second->get_global_id();
+        }
+
+        if (_has_enough_conns()) {
+            while (!waiting_for_session.empty()) {
+                _send_mon_message(std::move(waiting_for_session.front()));
+                waiting_for_session.pop_front();
+            }
+            _resend_mon_commands();
+        }
+    }
+}
+
+void MonClient::_finish_hunting(int auth_err) {
+    ldout(cct, 10) << __func__ << " " << auth_err << dendl;
+    ceph_assert(ceph_mutex_is_locked(monc_lock));
+    // the pending conns have been cleaned.
+    if (!_hunting()) {
+        return;
+    }
+
+    had_a_connection = true;
+    _un_backoff();
+
+    if (!auth_err) {
+        last_rotating_renew_sent = utime_t();
+        //TODO: this should wait for the needed monitor connections
         while (!waiting_for_session.empty()) {
             _send_mon_message(std::move(waiting_for_session.front()));
             waiting_for_session.pop_front();
         }
         _resend_mon_commands();
         send_log(true);
-        if (active_con) {
-            auth = std::move(active_con->get_auth());
-            if (global_id && global_id != active_con->get_global_id()) {
-                lderr(cct) << __func__ << " global_id changed from " << global_id
-                           << " to " << active_con->get_global_id() << dendl;
+
+        for (auto &con: active_cons) {
+            if (con.second) {
+
+                auto auth_data = auth_data_per_mon.find(con.first);
+
+//                auth_data->second.auth = std::move(con.second->get_auth());
+                if (auth_data->second.global_id && auth_data->second.global_id != con.second->get_global_id()) {
+                    lderr(cct) << __func__ << " global_id changed from " << global_id
+                               << " to " << con.second->get_global_id() << dendl;
+                }
+
+                auth_data->second.global_id = con.second->get_global_id();
             }
-            global_id = active_con->get_global_id();
         }
     }
 }
@@ -1275,34 +1399,38 @@ void MonClient::tick() {
     if (_hunting()) {
         ldout(cct, 1) << "continuing hunt" << dendl;
         return _reopen_session();
-    } else if (active_con) {
-        // just renew as needed
-        auto cur_con = active_con->get_con();
-        if (!cur_con->has_feature(CEPH_FEATURE_MON_STATEFUL_SUB)) {
-            const bool maybe_renew = sub.need_renew();
-            ldout(cct, 10) << "renew subs? -- " << (maybe_renew ? "yes" : "no")
-                           << dendl;
-            if (maybe_renew) {
-                _renew_subs();
-            }
-        }
+    } else if (_has_enough_conns()) {
 
-        if (now > last_keepalive + cct->_conf->mon_client_ping_interval) {
-            cur_con->send_keepalive();
-            last_keepalive = now;
+        for (auto &con: active_cons) {
+            auto cur_con = con.second->get_con();
 
-            if (cct->_conf->mon_client_ping_timeout > 0 &&
-                cur_con->has_feature(CEPH_FEATURE_MSGR_KEEPALIVE2)) {
-                utime_t lk = cur_con->get_last_keepalive_ack();
-                utime_t interval = now - lk;
-                if (interval > cct->_conf->mon_client_ping_timeout) {
-                    ldout(cct, 1) << "no keepalive since " << lk << " (" << interval
-                                  << " seconds), reconnecting" << dendl;
-                    return _reopen_session();
+            if (!cur_con->has_feature(CEPH_FEATURE_MON_STATEFUL_SUB)) {
+                const bool maybe_renew = sub.need_renew();
+                ldout(cct, 10) << "renew subs? -- " << (maybe_renew ? "yes" : "no")
+                               << dendl;
+                if (maybe_renew) {
+                    _renew_subs();
                 }
             }
 
-            _un_backoff();
+
+            if (now > last_keepalive + cct->_conf->mon_client_ping_interval) {
+                cur_con->send_keepalive();
+                last_keepalive = now;
+
+                if (cct->_conf->mon_client_ping_timeout > 0 &&
+                    cur_con->has_feature(CEPH_FEATURE_MSGR_KEEPALIVE2)) {
+                    utime_t lk = cur_con->get_last_keepalive_ack();
+                    utime_t interval = now - lk;
+                    if (interval > cct->_conf->mon_client_ping_timeout) {
+                        ldout(cct, 1) << "no keepalive since " << lk << " (" << interval
+                                      << " seconds), reconnecting" << dendl;
+                        return _reopen_session();
+                    }
+                }
+
+                _un_backoff();
+            }
         }
 
         if (now > last_send_log + cct->_conf->mon_client_log_interval) {
@@ -1365,18 +1493,20 @@ void MonClient::handle_subscribe_ack(MMonSubscribeAck *m) {
 
 int MonClient::_check_auth_tickets() {
     ceph_assert(ceph_mutex_is_locked(monc_lock));
-    if (active_con && auth) {
+
+    for (auto it = auth_data_per_mon.begin(); it != auth_data_per_mon.end(); ++it) {
         if (auth->need_tickets()) {
+
             ldout(cct, 10) << __func__ << " getting new tickets!" << dendl;
             auto m = ceph::make_message<MAuth>();
+
             m->protocol = auth->get_protocol();
             auth->prepare_build_request();
             auth->build_request(m->auth_payload);
-            _send_mon_message(m);
+            _send_mon_message2(it->first, m);
         }
-
-        _check_auth_rotating();
     }
+
     return 0;
 }
 
@@ -1388,42 +1518,88 @@ int MonClient::_check_auth_rotating() {
         return 0;
     }
 
-    if (!active_con || !auth) {
-        ldout(cct, 10) << "_check_auth_rotating waiting for auth session" << dendl;
-        return 0;
+
+    for (auto &con: active_cons) {
+        auto auth_con = auth_data_per_mon.find(con.first);
+
+        if (!con.second || !auth) {
+            ldout(cct, 10) << "_check_auth_rotating waiting for auth session" << dendl;
+
+            continue;
+        }
+
+        utime_t now = ceph_clock_now();
+        utime_t cutoff = now;
+        cutoff -= std::min(30.0, cct->_conf->auth_service_ticket_ttl / 4.0);
+        utime_t issued_at_lower_bound = now;
+        issued_at_lower_bound -= cct->_conf->auth_service_ticket_ttl;
+        if (!rotating_secrets->need_new_secrets(cutoff)) {
+            ldout(cct, 10) << "_check_auth_rotating have uptodate secrets (they expire after " << cutoff << ")"
+                           << dendl;
+            rotating_secrets->dump_rotating();
+            return 0;
+        }
+
+        ldout(cct, 10) << "_check_auth_rotating renewing rotating keys (they expired before " << cutoff << ")" << dendl;
+        if (!rotating_secrets->need_new_secrets() &&
+            rotating_secrets->need_new_secrets(issued_at_lower_bound)) {
+            // the key has expired before it has been issued?
+            lderr(cct) << __func__ << " possible clock skew, rotating keys expired way too early"
+                       << " (before " << issued_at_lower_bound << ")" << dendl;
+        }
+        if ((now > last_rotating_renew_sent) &&
+            double(now - last_rotating_renew_sent) < 1) {
+            ldout(cct, 10) << __func__ << " called too often (last: "
+                           << last_rotating_renew_sent << "), skipping refresh" << dendl;
+            return 0;
+        }
+
+        auto m = ceph::make_message<MAuth>();
+        m->protocol = auth->get_protocol();
+        if (auth->build_rotating_request(m->auth_payload)) {
+            last_rotating_renew_sent = now;
+            _send_mon_message2(con.first, std::move(m));
+        }
+
     }
 
-    utime_t now = ceph_clock_now();
-    utime_t cutoff = now;
-    cutoff -= std::min(30.0, cct->_conf->auth_service_ticket_ttl / 4.0);
-    utime_t issued_at_lower_bound = now;
-    issued_at_lower_bound -= cct->_conf->auth_service_ticket_ttl;
-    if (!rotating_secrets->need_new_secrets(cutoff)) {
-        ldout(cct, 10) << "_check_auth_rotating have uptodate secrets (they expire after " << cutoff << ")" << dendl;
-        rotating_secrets->dump_rotating();
-        return 0;
-    }
-
-    ldout(cct, 10) << "_check_auth_rotating renewing rotating keys (they expired before " << cutoff << ")" << dendl;
-    if (!rotating_secrets->need_new_secrets() &&
-        rotating_secrets->need_new_secrets(issued_at_lower_bound)) {
-        // the key has expired before it has been issued?
-        lderr(cct) << __func__ << " possible clock skew, rotating keys expired way too early"
-                   << " (before " << issued_at_lower_bound << ")" << dendl;
-    }
-    if ((now > last_rotating_renew_sent) &&
-        double(now - last_rotating_renew_sent) < 1) {
-        ldout(cct, 10) << __func__ << " called too often (last: "
-                       << last_rotating_renew_sent << "), skipping refresh" << dendl;
-        return 0;
-    }
-    auto m = ceph::make_message<MAuth>();
-    m->protocol = auth->get_protocol();
-    if (auth->build_rotating_request(m->auth_payload)) {
-        last_rotating_renew_sent = now;
-        _send_mon_message(std::move(m));
-    }
     return 0;
+}
+
+int MonClient::wait_auth_rotating2(int mon_rank, double timeout) {
+
+    std::unique_lock l(monc_lock);
+
+    auto auth_data = auth_data_per_mon.find(mon_rank);
+
+    if (auth_data != auth_data_per_mon.end()) {
+        return 0;
+    }
+
+    // Must be initialized
+    ceph_assert(auth != nullptr);
+
+    auto &auth_cond = auth_data->second.auth_cond;
+
+    if (auth->get_protocol() == CEPH_AUTH_NONE)
+        return 0;
+
+    if (!rotating_secrets)
+        return 0;
+
+    ldout(cct, 10) << __func__ << " waiting for " << timeout << dendl;
+    utime_t cutoff = ceph_clock_now();
+    cutoff -= std::min(30.0, cct->_conf->auth_service_ticket_ttl / 4.0);
+    if (auth_cond.wait_for(l, ceph::make_timespan(timeout), [this, cutoff] {
+        return (!auth_principal_needs_rotating_keys(entity_name) ||
+                !rotating_secrets->need_new_secrets(cutoff));
+    })) {
+        ldout(cct, 10) << __func__ << " done" << dendl;
+        return 0;
+    } else {
+        ldout(cct, 0) << __func__ << " timed out after " << timeout << dendl;
+        return -ETIMEDOUT;
+    }
 }
 
 int MonClient::wait_auth_rotating(double timeout) {
@@ -2145,6 +2321,7 @@ int MonConnection::_negotiate(MAuthReply *m,
                               uint32_t want_keys,
                               RotatingKeyRing *keyring) {
     int r = _init_auth(m->protocol, entity_name, want_keys, keyring, false);
+
     if (r == -ENOTSUP) {
         if (m->result == -ENOTSUP) {
             ldout(cct, 10) << "none of our auth protocols are supported by the server"
