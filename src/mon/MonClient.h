@@ -423,6 +423,11 @@ private:
     std::map<int, MonAuthData> auth_data_per_mon;
 
     std::unique_ptr<AuthClientHandler> auth;
+    uint32_t want_keys = 0;
+    uint64_t global_id = 0;
+    ceph::condition_variable auth_cond;
+    int authenticate_err = 0;
+    bool authenticated = false;
 
     std::list<MessageRef> waiting_for_session;
 

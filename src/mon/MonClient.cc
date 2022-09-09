@@ -561,18 +561,19 @@ void MonClient::handle_monmap2(MMonMap *m) {
         _reopen_session();
     } else {
         auto new_name = monmap.get_name(con_addrs);
+        auto rank = monmap.get_rank(con_addrs);
         if (new_name.empty()) {
             ldout(cct, 10) << "mon." << old_name << " at " << con_addrs
                            << " went away" << dendl;
             // can't find the mon we were talking to (above)
-            _reopen_session2(old_name);
+            _reopen_session2(rank);
         } else if (messenger->should_use_msgr2() &&
                    monmap.get_addrs(new_name).has_msgr2() &&
                    !con_addrs.has_msgr2()) {
             ldout(cct, 1) << " mon." << new_name << " has (v2) addrs "
                           << monmap.get_addrs(new_name) << " but i'm connected to "
                           << con_addrs << ", reconnecting" << dendl;
-            _reopen_session2(old_name);
+            _reopen_session2(rank);
         }
     }
 
@@ -988,8 +989,8 @@ void MonClient::_send_mon_message2(int rank, MessageRef m) {
         ldout(cct, 10) << __func__ << " Failed to send message to monitor " << rank << " as it's not currently online"
                        << dendl;
 
-        waiting_for_session_per_mon.push_back(
-                std::make_pair<int, MessageRef>(std::move(rank), std::move(m)));
+//        waiting_for_session_per_mon.push_back(
+//                std::make_pair<int, MessageRef>(std::move(rank), std::move(m)));
     } else {
         auto cur_con = this->active_cons.find(rank)->second->get_con();
 
