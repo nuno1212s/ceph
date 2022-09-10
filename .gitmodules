@@ -75,3 +75,6 @@
 [submodule "src/jaegertracing/opentelemetry-cpp"]
 	path = src/jaegertracing/opentelemetry-cpp
 	url = https://github.com/open-telemetry/opentelemetry-cpp.git
+[submodule "src/mon/bft/cephfebft"]
+	path = src/mon/bft/cephfebft
+	url = git@github.com:febft/cephfebft.git

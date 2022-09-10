@@ -54,10 +54,11 @@ add_library(mon STATIC
         ${lib_mon_srcs})
 
 target_link_libraries(mon
+        cephfebft
         kv
         heap_profiler
-        fmt::fmt
-		cephfebft)
+        fmt::fmt)
+
 if (WITH_JAEGER)
     target_link_libraries(mon jaeger_base)
 endif ()

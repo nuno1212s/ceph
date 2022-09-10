@@ -156,7 +156,7 @@ FebftMonitor::FebftMonitor(CephContext *cct_, std::string nm, MonitorDBStore *st
 
     prenautilus_local_mon_commands = local_mon_commands;
     for (auto &i: prenautilus_local_mon_commands) {
-        std::string n = cmddesc_get_prenautilus_compat(i.cmdstring);
+        std::string n = ceph::common::cmddesc_get_prenautilus_compat(i.cmdstring);
         if (n != i.cmdstring) {
             dout(20) << " pre-nautilus cmd " << i.cmdstring << " -> " << n << dendl;
             i.cmdstring = n;
@@ -174,6 +174,13 @@ FebftMonitor::FebftMonitor(CephContext *cct_, std::string nm, MonitorDBStore *st
 
 std::string FebftMonitor::get_leader_name() {
     return monmap->get_name(get_leader());
+}
+
+const char * FebftMonitor::get_state_name() const {
+
+    //TODO
+    return "";
+
 }
 
 int FebftMonitor::get_leader() const {
@@ -425,7 +432,7 @@ int FebftMonitor::do_admin_command(std::string_view command, const cmdmap_t &cmd
             continue;
         if (!args.empty())
             args += ", ";
-        args += cmd_vartype_stringify(p->second);
+        args += ceph::common::cmd_vartype_stringify(p->second);
     }
     args = "[" + args + "]";
 
@@ -445,25 +452,18 @@ int FebftMonitor::do_admin_command(std::string_view command, const cmdmap_t &cmd
         _quorum_status(f, out);
     } else if (command == "sync_force") {
         bool validate = false;
-        if (!cmd_getval(cmdmap, "yes_i_really_mean_it", validate)) {
-            std::string v;
-            if (cmd_getval(cmdmap, "validate", v) &&
-                v == "--yes-i-really-mean-it") {
-                validate = true;
-            }
-        }
-        if (!validate) {
-            err << "are you SURE? this will mean the monitor store will be erased "
-                   "the next time the monitor is restarted.  pass "
-                   "'--yes-i-really-mean-it' if you really do.";
-            r = -EPERM;
+
+            err << "this command is unavailable on BFT mode, as it is handled by febft";
+            r = -EINVAL;
             goto abort;
-        }
-        sync_force(f);
+
+//        sync_force(f);
     } else if (command.compare(0, 23, "add_bootstrap_peer_hint") == 0 ||
                command.compare(0, 24, "add_bootstrap_peer_hintv") == 0) {
-        if (!_add_bootstrap_peer_hint(command, cmdmap, out))
-            goto abort;
+
+        err << "this command is unavailable on BFT mode, as it is handled by febft";
+        r = -EINVAL;
+        goto abort;
     } else if (command == "quorum enter" || command == "quorum exit") {
         err << "This command is not available in BFT mode!";
     } else if (command == "ops") {
@@ -1232,8 +1232,8 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
         // make sure our map is readable and up to date
         if (!is_leader() && !is_peon()) {
             dout(10) << " waiting for quorum" << dendl;
-            waitfor_quorum.push_back(new C_RetryMessage(this, op));
-            return;
+            //waitfor_quorum.push_back(new C_RetryMessage(this, op));
+//            return;
         }
         _quorum_status(f.get(), ds);
         rdata.append(ds);
@@ -1677,4 +1677,4 @@ void FebftMonitor::set_healthy_stretch_mode() {}
 //This is also not implemented in regular ceph
 void FebftMonitor::enable_stretch_mode() {};
 
-void FebftMonitor::set_mon_crush_location(const std::string &loc) {};
+void FebftMonitor::set_mon_crush_location(const std::string &loc) {}
