@@ -40,6 +40,7 @@ protected:
 public:
     FebftSMR(FebftMonitor &mon, const std::string &name);
 
+    ~FebftSMR() override = default;
 public:
 
     bool is_init() const;
@@ -123,7 +124,6 @@ protected:
 
     void propose_pending();
 
-    ~FebftSMR() override = default;
 
 private:
     std::string get_name() const override;

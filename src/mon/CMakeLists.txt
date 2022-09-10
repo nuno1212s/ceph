@@ -27,6 +27,7 @@ set(lib_mon_srcs
         cft/PaxosMonitor.cc cft/PaxosMonitor.h
         cft/PaxosSmr.cc cft/PaxosSmr.h
         bft/FebftSmr.cc bft/FebftSmr.h
+        bft/FebftMonitor.cc bft/FebftMonitor.h
         bft/febft_rust_interface.h)
 
 if (TARGET mgr_cap_obj)
@@ -37,13 +38,26 @@ if (HAVE_GSSAPI)
     list(APPEND lib_mon_srcs
             ${CMAKE_SOURCE_DIR}/src/auth/krb/KrbServiceHandler.cpp)
 endif ()
+include(FetchContent)
+
+FetchContent_Declare(
+		Corrosion
+		GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+		GIT_TAG v0.2.1 # Optionally specify a commit hash, version tag or branch here
+)
+
+FetchContent_MakeAvailable(Corrosion)
+
+corrosion_import_crate(MANIFEST_PATH bft/cephfebft/Cargo.toml)
 
 add_library(mon STATIC
         ${lib_mon_srcs})
+
 target_link_libraries(mon
         kv
         heap_profiler
-        fmt::fmt)
+        fmt::fmt
+		cephfebft)
 if (WITH_JAEGER)
     target_link_libraries(mon jaeger_base)
 endif ()

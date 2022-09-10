@@ -1651,30 +1651,30 @@ void FebftMonitor::shutdown() {
 }
 
 
-bool is_stretch_mode() { return false; }
+bool FebftMonitor::is_stretch_mode() { return false; }
 
-bool is_degraded_stretch_mode() { return false; }
+bool FebftMonitor::is_degraded_stretch_mode() { return false; }
 
-bool is_recovering_stretch_mode() { return false; }
+bool FebftMonitor::is_recovering_stretch_mode() { return false; }
 
-void try_engage_stretch_mode() {}
+void FebftMonitor::try_engage_stretch_mode() {}
 
-void maybe_go_degraded_stretch_mode() {}
+void FebftMonitor::maybe_go_degraded_stretch_mode() {}
 
-void trigger_degraded_stretch_mode(const std::set <std::string> &dead_mons,
+void FebftMonitor::trigger_degraded_stretch_mode(const std::set <std::string> &dead_mons,
                                    const std::set<int> &dead_buckets) {}
 
-void set_degraded_stretch_mode() {}
+void FebftMonitor::set_degraded_stretch_mode() {}
 
-void go_recovery_stretch_mode() {}
+void FebftMonitor::go_recovery_stretch_mode() {}
 
-void set_recovery_stretch_mode() {}
+void FebftMonitor::set_recovery_stretch_mode() {}
 
-void trigger_healthy_stretch_mode() {}
+void FebftMonitor::trigger_healthy_stretch_mode() {}
 
-void set_healthy_stretch_mode() {}
+void FebftMonitor::set_healthy_stretch_mode() {}
 
 //This is also not implemented in regular ceph
-void enable_stretch_mode() {};
+void FebftMonitor::enable_stretch_mode() {};
 
-void set_mon_crush_location(const std::string &loc) {};
+void FebftMonitor::set_mon_crush_location(const std::string &loc) {};
