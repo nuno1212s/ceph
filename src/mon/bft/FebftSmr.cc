@@ -1,5 +1,6 @@
 #include "FebftSmr.h"
 #include "FebftMonitor.h"
+#include "febft_rust_interface.h"
 
 using std::string;
 

@@ -60,6 +60,8 @@ public:
       //Will then broadcast the request into the necessary replicas
     };
 
+    void _ms_dispatch(Message *m) override;
+
 protected:
 
 

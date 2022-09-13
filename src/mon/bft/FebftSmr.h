@@ -2,11 +2,15 @@
 #define CEPH_FEBFTSMR_H
 
 #include "mon/SMRProtocol.h"
-#include "febft_interface.h"
-#include "febft_rust_interface.h"
 #include "stdlib.h"
 
 class FebftMonitor;
+
+struct CephClient;
+template<typename S , typename T >
+struct Replica;
+struct CephExecutor;
+struct StrictPersistentLog;
 
 class FebftSMR : public SMRProtocol {
 

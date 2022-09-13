@@ -23,12 +23,11 @@ set(lib_mon_srcs
         ../osd/OSDCap.cc
         ../mgr/MgrCap.cc
         Service.cpp Service.h SMRProtocol.h
-        AbstractMonitor.cc AbstractMonitor.h
-        cft/PaxosMonitor.cc cft/PaxosMonitor.h
-        cft/PaxosSmr.cc cft/PaxosSmr.h
-        bft/FebftSmr.cc bft/FebftSmr.h
-        bft/FebftMonitor.cc bft/FebftMonitor.h
-        bft/febft_rust_interface.h)
+        AbstractMonitor.cc
+        cft/PaxosMonitor.cc
+        cft/PaxosSmr.cc
+        bft/FebftSmr.cc
+        bft/FebftMonitor.cc)
 
 if (TARGET mgr_cap_obj)
     list(APPEND lib_mon_srcs $<TARGET_OBJECTS:mgr_cap_obj>)

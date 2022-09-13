@@ -1,23 +1,16 @@
 #include "FebftMonitor.h"
 #include <iterator>
+#include <memory>
 #include <sstream>
 #include <tuple>
-#include <stdlib.h>
-#include <signal.h>
-#include <limits.h>
 #include <cstring>
-#include <boost/scope_exit.hpp>
-#include <boost/algorithm/string/predicate.hpp>
 
-#include "json_spirit/json_spirit_reader.h"
 #include "json_spirit/json_spirit_writer.h"
 
 #include "common/version.h"
 #include "common/blkdev.h"
 #include "common/cmdparse.h"
-#include "common/signal.h"
 
-#include "osd/OSDMap.h"
 
 #include "mon/MonitorDBStore.h"
 
@@ -25,13 +18,11 @@
 #include "messages/MMonGetMap.h"
 #include "messages/MMonGetVersion.h"
 #include "messages/MMonGetVersionReply.h"
-#include "messages/MGenericMessage.h"
 #include "messages/MMonCommand.h"
 #include "messages/MMonCommandAck.h"
 #include "messages/MMonSync.h"
 #include "messages/MMonScrub.h"
 #include "messages/MMonProbe.h"
-#include "messages/MMonJoin.h"
 #include "messages/MMonPaxos.h"
 #include "messages/MRoute.h"
 #include "messages/MForward.h"
@@ -39,23 +30,17 @@
 #include "messages/MMonSubscribe.h"
 #include "messages/MMonSubscribeAck.h"
 
-#include "messages/MCommand.h"
-#include "messages/MCommandReply.h"
 
 #include "messages/MTimeCheck2.h"
-#include "messages/MPing.h"
 
-#include "common/strtol.h"
 #include "common/ceph_argparse.h"
 #include "common/Timer.h"
 #include "common/Clock.h"
 #include "common/errno.h"
-#include "common/perf_counters.h"
 #include "common/admin_socket.h"
 #include "global/signal_handler.h"
 #include "common/Formatter.h"
 #include "include/stringify.h"
-#include "include/color.h"
 #include "include/ceph_fs.h"
 #include "include/str_list.h"
 
@@ -70,7 +55,6 @@
 #include "mon/KVMonitor.h"
 #include "mon/HealthMonitor.h"
 #include "common/config.h"
-#include "common/cmdparse.h"
 #include "include/ceph_assert.h"
 #include "include/compat.h"
 #include "perfglue/heap_profiler.h"
@@ -122,7 +106,7 @@ static ostream &_prefix(std::ostream *_dout, FebftMonitor *mon) {
   {parsesig, helptext, modulename, req_perms, FLAG(NONE)},
 #define COMMAND_WITH_FLAG(parsesig, helptext, modulename, req_perms, flags) \
   {parsesig, helptext, modulename, req_perms, flags},
-MonCommand mon_commands[] = {
+static MonCommand mon_commands[] = {
 #include "mon/MonCommands.h"
 };
 #undef COMMAND
@@ -132,18 +116,26 @@ FebftMonitor::FebftMonitor(CephContext *cct_, std::string nm, MonitorDBStore *st
                            MonMap *map)
         : AbstractMonitor(cct_, store, nm, m, mgr_m, map) {
 
+    //We always need at least 4 monitors
+    if (map->size() < 4) {
+        //TODO: Make this cleaner
+        derr << "Failed, cannot start BFT monitor without at least 4 monitors." << dendl;
+
+        exit(1);
+    }
+
     febft = std::make_unique<FebftSMR>(*this, "febft");
 
-    services[PAXOS_MDSMAP].reset(new MDSMonitor(*this, *febft, "mdsmap"));
-    services[PAXOS_MONMAP].reset(new MonmapMonitor(*this, *febft, "monmap"));
-    services[PAXOS_OSDMAP].reset(new OSDMonitor(cct, *this, *febft, "osdmap"));
-    services[PAXOS_LOG].reset(new LogMonitor(*this, *febft, "logm"));
-    services[PAXOS_AUTH].reset(new AuthMonitor(*this, *febft, "auth"));
-    services[PAXOS_MGR].reset(new MgrMonitor(*this, *febft, "mgr"));
-    services[PAXOS_MGRSTAT].reset(new MgrStatMonitor(*this, *febft, "mgrstat"));
-    services[PAXOS_HEALTH].reset(new HealthMonitor(*this, *febft, "health"));
-    services[PAXOS_CONFIG].reset(new ConfigMonitor(*this, *febft, "config"));
-    services[PAXOS_KV].reset(new KVMonitor(*this, *febft, "kv"));
+    services[PAXOS_MDSMAP] = std::make_unique<MDSMonitor>(*this, *febft, "mdsmap");
+    services[PAXOS_MONMAP] = std::make_unique<MonmapMonitor>(*this, *febft, "monmap");
+    services[PAXOS_OSDMAP] = std::make_unique<OSDMonitor>(cct, *this, *febft, "osdmap");
+    services[PAXOS_LOG] = std::make_unique<LogMonitor>(*this, *febft, "logm");
+    services[PAXOS_AUTH] = std::make_unique<AuthMonitor>(*this, *febft, "auth");
+    services[PAXOS_MGR] = std::make_unique<MgrMonitor>(*this, *febft, "mgr");
+    services[PAXOS_MGRSTAT] = std::make_unique<MgrStatMonitor>(*this, *febft, "mgrstat");
+    services[PAXOS_HEALTH] = std::make_unique<HealthMonitor>(*this, *febft, "health");
+    services[PAXOS_CONFIG] = std::make_unique<ConfigMonitor>(*this, *febft, "config");
+    services[PAXOS_KV] = std::make_unique<KVMonitor>(*this, *febft, "kv");
 
 
     // prepare local commands
@@ -176,7 +168,7 @@ std::string FebftMonitor::get_leader_name() {
     return monmap->get_name(get_leader());
 }
 
-const char * FebftMonitor::get_state_name() const {
+const char *FebftMonitor::get_state_name() const {
 
     //TODO
     return "";
@@ -238,7 +230,7 @@ int FebftMonitor::preinit() {
 
     if (!has_ever_joined) {
         // impose initial quorum restrictions?
-        list <string> initial_members;
+        list<string> initial_members;
         get_str_list(g_conf()->mon_initial_members, initial_members);
 
         if (!initial_members.empty()) {
@@ -453,9 +445,9 @@ int FebftMonitor::do_admin_command(std::string_view command, const cmdmap_t &cmd
     } else if (command == "sync_force") {
         bool validate = false;
 
-            err << "this command is unavailable on BFT mode, as it is handled by febft";
-            r = -EINVAL;
-            goto abort;
+        err << "this command is unavailable on BFT mode, as it is handled by febft";
+        r = -EINVAL;
+        goto abort;
 
 //        sync_force(f);
     } else if (command.compare(0, 23, "add_bootstrap_peer_hint") == 0 ||
@@ -503,7 +495,7 @@ int FebftMonitor::do_admin_command(std::string_view command, const cmdmap_t &cmd
             r = -ENOENT;
             goto abort;
         }
-        set <string> devnames;
+        set<string> devnames;
         get_raw_devices(devname, &devnames);
         json_spirit::mObject json_map;
         uint64_t smart_timeout = cct->_conf.get_val<uint64_t>(
@@ -537,7 +529,7 @@ int FebftMonitor::do_admin_command(std::string_view command, const cmdmap_t &cmd
             r = -EINVAL;
             goto abort;
         }
-        std::vector <std::string> cmd_vec;
+        std::vector<std::string> cmd_vec;
         get_str_vec(cmd, cmd_vec);
         string val;
         if (cmd_getval(cmdmap, "value", val)) {
@@ -637,7 +629,7 @@ void FebftMonitor::_quorum_status(ceph::Formatter *f, ostream &ss) {
         f->dump_int("mon", *p);
     f->close_section(); // quorum
 
-    list <string> quorum_names = get_quorum_names();
+    list<string> quorum_names = get_quorum_names();
     f->open_array_section("quorum_names");
     for (list<string>::iterator p = quorum_names.begin(); p != quorum_names.end(); ++p)
         f->dump_string("mon", *p);
@@ -688,7 +680,7 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
     }
 
     string prefix;
-    vector <string> fullcmd;
+    vector<string> fullcmd;
     cmdmap_t cmdmap;
     stringstream ss, ds;
     bufferlist rdata;
@@ -722,7 +714,7 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
         bufferlist rdata;
         Formatter *f = Formatter::create("json");
 
-        std::vector <MonCommand> commands = static_cast<MgrMonitor *>(
+        std::vector<MonCommand> commands = static_cast<MgrMonitor *>(
                 services[PAXOS_MGR].get())->get_command_descs();
 
         for (auto &c: leader_mon_commands) {
@@ -739,7 +731,7 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
     dout(0) << "handle_command " << *m << dendl;
 
     string format = ceph::common::cmd_getval_or<string>(cmdmap, "format", "plain");
-    boost::scoped_ptr <Formatter> f(Formatter::create(format));
+    boost::scoped_ptr<Formatter> f(Formatter::create(format));
 
     get_str_vec(prefix, fullcmd);
 
@@ -829,7 +821,7 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
             (mon_cmd->requires_perm('w') || mon_cmd->requires_perm('x'));
 
     // validate user's permissions for requested command
-    map <string, string> param_str_map;
+    map<string, string> param_str_map;
 
     // Catch bad_cmd_get exception if _generate_command_map() throws it
     try {
@@ -899,8 +891,8 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
         mgr_proxy_bytes += size;
         dout(10) << __func__ << " proxying mgr command (+" << size
                  << " -> " << mgr_proxy_bytes << ")" << dendl;
-        C_MgrProxyCommand * fin = new C_MgrProxyCommand((AbstractMonitor * )
-        this, op, size);
+        C_MgrProxyCommand *fin = new C_MgrProxyCommand((AbstractMonitor *)
+                                                               this, op, size);
         mgr_client.start_command(m->cmd,
                                  m->get_data(),
                                  &fin->outbl,
@@ -1085,7 +1077,7 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
         f->dump_string("commit", git_version_to_str());
         f->dump_stream("timestamp") << ceph_clock_now();
 
-        vector <string> tagsvec;
+        vector<string> tagsvec;
         cmd_getval(cmdmap, "tags", tagsvec);
         string tagstr = str_join(tagsvec, " ");
         if (!tagstr.empty())
@@ -1240,12 +1232,12 @@ void FebftMonitor::handle_command(MonOpRequestRef op) {
         rs = "";
         r = 0;
     } else if (prefix == "mon ok-to-stop") {
-        vector <string> ids, invalid_ids;
+        vector<string> ids, invalid_ids;
         if (!cmd_getval(cmdmap, "ids", ids)) {
             r = -EINVAL;
             goto out;
         }
-        set <string> wouldbe;
+        set<string> wouldbe;
         for (auto rank: quorum) {
             wouldbe.insert(monmap->get_name(rank));
         }
@@ -1661,8 +1653,8 @@ void FebftMonitor::try_engage_stretch_mode() {}
 
 void FebftMonitor::maybe_go_degraded_stretch_mode() {}
 
-void FebftMonitor::trigger_degraded_stretch_mode(const std::set <std::string> &dead_mons,
-                                   const std::set<int> &dead_buckets) {}
+void FebftMonitor::trigger_degraded_stretch_mode(const std::set<std::string> &dead_mons,
+                                                 const std::set<int> &dead_buckets) {}
 
 void FebftMonitor::set_degraded_stretch_mode() {}
 
@@ -1678,3 +1670,103 @@ void FebftMonitor::set_healthy_stretch_mode() {}
 void FebftMonitor::enable_stretch_mode() {};
 
 void FebftMonitor::set_mon_crush_location(const std::string &loc) {}
+
+void FebftMonitor::_ms_dispatch(Message *m) {
+
+    if (is_shutdown()) {
+        m->put();
+        return;
+    }
+
+    MonOpRequestRef op = op_tracker.create_request<MonOpRequest>(m);
+    bool src_is_mon = op->is_src_mon();
+    op->mark_event("mon:_ms_dispatch");
+    MonSession *s = op->get_session();
+    if (s && s->closed) {
+        return;
+    }
+
+    if (src_is_mon && s) {
+        ConnectionRef con = m->get_connection();
+        if (con->get_messenger() && con->get_features() != s->con_features) {
+            // only update features if this is a non-anonymous connection
+            dout(10) << __func__ << " feature change for " << m->get_source_inst()
+                     << " (was " << s->con_features
+                     << ", now " << con->get_features() << ")" << dendl;
+            // connection features changed - recreate session.
+            if (s->con && s->con != con) {
+                dout(10) << __func__ << " connection for " << m->get_source_inst()
+                         << " changed from session; mark down and replace" << dendl;
+                s->con->mark_down();
+            }
+            if (s->item.is_on_list()) {
+                // forwarded messages' sessions are not in the sessions map and
+                // exist only while the op is being handled.
+                std::lock_guard l(session_map_lock);
+                remove_session(s);
+            }
+            s = nullptr;
+        }
+    }
+
+    if (!s) {
+        // if the sender is not a monitor, make sure their first message for a
+        // session is an MAuth.  If it is not, assume it's a stray message,
+        // and considering that we are creating a new session it is safe to
+        // assume that the sender hasn't authenticated yet, so we have no way
+        // of assessing whether we should handle it or not.
+        if (!src_is_mon && (m->get_type() != CEPH_MSG_AUTH &&
+                            m->get_type() != CEPH_MSG_MON_GET_MAP &&
+                            m->get_type() != CEPH_MSG_PING)) {
+            dout(1) << __func__ << " dropping stray message " << *m
+                    << " from " << m->get_source_inst() << dendl;
+            return;
+        }
+
+        ConnectionRef con = m->get_connection();
+        {
+            std::lock_guard l(session_map_lock);
+            s = session_map.new_session(m->get_source(),
+                                        m->get_source_addrs(),
+                                        con.get());
+        }
+        ceph_assert(s);
+        con->set_priv(RefCountedPtr{s, false});
+        dout(10) << __func__ << " new session " << s << " " << *s
+                 << " features 0x" << std::hex
+                 << s->con_features << std::dec << dendl;
+        op->set_session(s);
+
+        logger->set(l_mon_num_sessions, session_map.get_size());
+        logger->inc(l_mon_session_add);
+
+        if (src_is_mon) {
+            // give it monitor caps; the peer type has been authenticated
+            dout(5) << __func__ << " setting monitor caps on this connection" << dendl;
+            if (!s->caps.is_allow_all()) // but no need to repeatedly copy
+                s->caps = mon_caps;
+            s->authenticated = true;
+        }
+    } else {
+        dout(20) << __func__ << " existing session " << s << " for " << s->name
+                 << dendl;
+    }
+
+    ceph_assert(s);
+
+    s->session_timeout = ceph_clock_now();
+    s->session_timeout += g_conf()->mon_session_timeout;
+
+    if (s->auth_handler) {
+        s->entity_name = s->auth_handler->get_entity_name();
+        s->global_id = s->auth_handler->get_global_id();
+        s->global_id_status = s->auth_handler->get_global_id_status();
+    }
+
+    dout(20) << " entity_name " << s->entity_name
+             << " global_id " << s->global_id
+             << " (" << s->global_id_status
+             << ") caps " << s->caps.get_str() << dendl;
+
+    dispatch_op(op);
+}

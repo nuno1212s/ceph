@@ -3593,7 +3593,7 @@ int PaxosMonitor::do_admin_command(
   {parsesig, helptext, modulename, req_perms, FLAG(NONE)},
 #define COMMAND_WITH_FLAG(parsesig, helptext, modulename, req_perms, flags) \
   {parsesig, helptext, modulename, req_perms, flags},
-MonCommand mon_commands[] = {
+static MonCommand mon_commands[] = {
 #include "mon/MonCommands.h"
 };
 #undef COMMAND
