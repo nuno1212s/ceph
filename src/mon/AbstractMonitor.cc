@@ -195,6 +195,8 @@ AbstractMonitor::AbstractMonitor(CephContext *cct_, MonitorDBStore *store, strin
 
 AbstractMonitor::~AbstractMonitor()
 {
+    cpu_tp.stop();
+
     op_tracker.on_shutdown();
 
     delete logger;

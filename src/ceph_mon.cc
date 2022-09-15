@@ -530,19 +530,19 @@ int main(int argc, const char **argv) {
         }
         ceph_assert(r == 0);
 
-        {
-            FebftMonitor mon_2(g_ceph_context, g_conf()->name.get_id(), &store, 0, 0, &monmap);
 
-            r = mon_2.mkfs(osdmapbl);
+        FebftMonitor mon_2(g_ceph_context, g_conf()->name.get_id(), &store, 0, 0, &monmap);
 
-            if (r < 0) {
-                derr << argv[0] << ": error creating monfs: " << cpp_strerror(r) << dendl;
-                exit(1);
-            }
-            store.close();
-            dout(0) << argv[0] << ": created monfs at " << g_conf()->mon_data
-                    << " for " << g_conf()->name << dendl;
+        r = mon_2.mkfs(osdmapbl);
+
+        if (r < 0) {
+            derr << argv[0] << ": error creating monfs: " << cpp_strerror(r) << dendl;
+            exit(1);
         }
+
+        store.close();
+        dout(0) << argv[0] << ": created monfs at " << g_conf()->mon_data
+                << " for " << g_conf()->name << dendl;
 
 //        {
 //            PaxosMonitor mon(g_ceph_context, g_conf()->name.get_id(), &store, 0, 0, &monmap);
@@ -870,8 +870,11 @@ int main(int argc, const char **argv) {
         derr << "unable to create mgr_msgr" << dendl;
         prefork.exit(1);
     }
+//
+//    mon = (AbstractMonitor *) new PaxosMonitor(g_ceph_context, g_conf()->name.get_id(), store,
+//                                               msgr, mgr_msgr, &monmap);
 
-    mon = (AbstractMonitor *) new PaxosMonitor(g_ceph_context, g_conf()->name.get_id(), store,
+    mon = (AbstractMonitor *) new FebftMonitor(g_ceph_context, g_conf()->name.get_id(), store,
                                                msgr, mgr_msgr, &monmap);
 
     mon->orig_argc = argc;
