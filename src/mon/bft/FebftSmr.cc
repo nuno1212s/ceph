@@ -50,6 +50,9 @@ bool FebftSMR::is_shutdown() const {
 void FebftSMR::init_logger() {  }
 
 void FebftSMR::init() {
+
+    ::init(4, 4);
+
     this->replica = ::init_replica(this->replica_id);
 
     this->smr_client = ::init_client(this->replica_id, 4, 1, ::ctx_callback);
