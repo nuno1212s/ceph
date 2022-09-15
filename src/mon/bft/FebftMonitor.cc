@@ -205,6 +205,8 @@ int FebftMonitor::preinit(){
 
     dout(1) << "Preinitializing the febft monitor " << dendl;
 
+    std::cout << "Testing some things" << std::endl;
+
     std::unique_lock l(lock);
 
     dout(1) << "preinit fsid " << monmap->fsid << dendl;
