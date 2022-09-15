@@ -55,11 +55,15 @@ void FebftSMR::init() {
 
     this->guard = ::init(4, 4);
 
+    dout(10) << __func__ << " initializing febft thread" << dendl;
+
     std::thread init_febft_thread([this]() {
         std::lock_guard lock(this->smr_lock);
 
+        dout(10) << __func__ << " initializing febft replica " << dendl;
         this->replica = ::init_replica(this->replica_id);
 
+        dout(10) << __func__ << " initializing febft client " << dendl;
         this->smr_client = ::init_client(this->replica_id, 4, 1, ::ctx_callback);
 
 // Define a lamda expression
@@ -67,6 +71,7 @@ void FebftSMR::init() {
             block_on_replica(replica);
         };
 
+        dout(10) << __func__ << " running febft replica " << dendl;
         std::thread replica_thread(f, this->replica);
     });
 
