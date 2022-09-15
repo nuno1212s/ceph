@@ -51,7 +51,7 @@ void FebftSMR::init_logger() {  }
 
 void FebftSMR::init() {
 
-    ::init(4, 4);
+    this->guard = ::init(4, 4);
 
     this->replica = ::init_replica(this->replica_id);
 

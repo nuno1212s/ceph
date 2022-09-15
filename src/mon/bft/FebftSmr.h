@@ -17,6 +17,8 @@ class FebftSMR : public SMRProtocol {
 protected:
     std::string name;
 
+    void * guard;
+
     CephClient *smr_client;
 
     FebftMonitor &mon;
