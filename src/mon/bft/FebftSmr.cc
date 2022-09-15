@@ -12,6 +12,7 @@ using ceph::to_timespan;
 #define dout_subsys ceph_subsys_mon
 #undef dout_prefix
 #define dout_prefix _prefix(_dout, mon, mon.name, mon.rank, name)
+
 static std::ostream &_prefix(std::ostream *_dout, FebftMonitor &mon, const string &name,
                              int rank, const string &febft_name) {
     return *_dout << "mon." << name << "@" << rank
@@ -29,11 +30,11 @@ FebftSMR::FebftSMR(FebftMonitor &mon, const std::string &name) : name(name), mon
 
     if (name.find('a') != std::string::npos) {
         replica_id = 1;
-    } else if (name.find('b')!= std::string::npos) {
+    } else if (name.find('b') != std::string::npos) {
         replica_id = 2;
-    } else if (name.find('c')!= std::string::npos) {
+    } else if (name.find('c') != std::string::npos) {
         replica_id = 3;
-    } else if (name.find('d')!= std::string::npos) {
+    } else if (name.find('d') != std::string::npos) {
         replica_id = 4;
     } else {
         replica_id = 1;
@@ -48,34 +49,51 @@ bool FebftSMR::is_shutdown() const {
     return smr_client == nullptr;
 }
 
-void FebftSMR::init_logger() {  }
+void FebftSMR::init_logger() {}
 
 void FebftSMR::init() {
 
     this->guard = ::init(4, 4);
 
-    this->replica = ::init_replica(this->replica_id);
+    std::thread init_febft_thread([this]() {
+        std::lock_guard lock(this->smr_lock);
 
-    this->smr_client = ::init_client(this->replica_id, 4, 1, ::ctx_callback);
+        this->replica = ::init_replica(this->replica_id);
+
+        this->smr_client = ::init_client(this->replica_id, 4, 1, ::ctx_callback);
+
+// Define a lamda expression
+        auto f = [](Replica<CephExecutor, StrictPersistentLog> *replica) {
+            block_on_replica(replica);
+        };
+
+        std::thread replica_thread(f, this->replica);
+    });
+
 }
 
 epoch_t FebftSMR::get_epoch() {
+    std::lock_guard lock(this->smr_lock);
     return ::get_view_seq(this->smr_client);
 }
 
 int FebftSMR::quorum_age() {
+    std::lock_guard lock(this->smr_lock);
     return ::get_quorum_age(this->smr_client);
 }
 
 int FebftSMR::get_leader() {
+    std::lock_guard lock(this->smr_lock);
     return ::get_leader(this->smr_client);
 }
 
 utime_t FebftSMR::get_leader_since() {
+    std::lock_guard lock(this->smr_lock);
     return translate_time(::get_leader_since(this->smr_client));
 }
 
 bool FebftSMR::is_active() const {
+    std::lock_guard lock(this->smr_lock);
     return ::is_active(this->smr_client);
 }
 
@@ -100,10 +118,12 @@ bool FebftSMR::is_readable(version_t v) const {
 }
 
 bool FebftSMR::is_writeable() {
+    std::lock_guard lock(this->smr_lock);
     return ::is_writeable(this->smr_client);
 }
 
 bool FebftSMR::is_writing() const {
+    std::lock_guard lock(this->smr_lock);
     return ::is_writing(this->smr_client);
 }
 
@@ -111,6 +131,7 @@ void FebftSMR::wait_for_active(MonOpRequestRef o, Context *c) {
     if (o)
         o->mark_event("febft:wait_for_active");
 
+    std::lock_guard lock(this->smr_lock);
     ::wait_for_active(this->smr_client, c);
 }
 
@@ -119,6 +140,7 @@ void FebftSMR::wait_for_readable(MonOpRequestRef o, Context *c, version_t ver) {
     if (o)
         o->mark_event("febft:wait_for_readable");
 
+    std::lock_guard lock(this->smr_lock);
     ::wait_for_readable(this->smr_client, c);
 }
 
@@ -126,6 +148,7 @@ void FebftSMR::wait_for_writeable(MonOpRequestRef o, Context *c) {
     if (o)
         o->mark_event("febft:wait_for_writeable");
 
+    std::lock_guard lock(this->smr_lock);
     ::wait_for_writeable(this->smr_client, c);
 }
 
@@ -143,6 +166,7 @@ void FebftSMR::unplug() {
 }
 
 void FebftSMR::queue_pending_finisher(Context *onfinished) {
+    std::lock_guard lock(this->smr_lock);
     ::queue_finisher(this->smr_client, onfinished);
 }
 
@@ -168,16 +192,19 @@ void FebftSMR::dispatch(MonOpRequestRef op) {
 
 utime_t FebftSMR::get_last_commit_time() const {
 
-    auto time = ::get_last_committed_time(this -> smr_client);
+    std::lock_guard lock(this->smr_lock);
+    auto time = ::get_last_committed_time(this->smr_client);
 
     return translate_time(time);
 }
 
 version_t FebftSMR::get_first_committed() const {
+    std::lock_guard lock(this->smr_lock);
     return ::get_first_committed(this->smr_client);
 }
 
 version_t FebftSMR::get_version() const {
+    std::lock_guard lock(this->smr_lock);
     return ::get_last_committed(this->smr_client);
 }
 
@@ -195,6 +222,7 @@ void FebftSMR::shutdown() {
 
 bool FebftSMR::read(const std::string &key, buffer::list &bl) {
 
+    std::lock_guard lock(this->smr_lock);
     auto *transaction = init_read_transaction(get_name(), key);
 
     auto *reply = do_blocking_request(this->smr_client, transaction);
@@ -233,6 +261,7 @@ version_t FebftSMR::read_current(buffer::list &bl) {
 
 int FebftSMR::read_version_from_service(const std::string &service_name, const std::string &key, buffer::list &bl) {
 
+    std::lock_guard lock(this->smr_lock);
     auto *transaction = init_read_transaction(service_name, key);
 
     auto *reply = do_blocking_request(this->smr_client, transaction);
@@ -265,6 +294,7 @@ int FebftSMR::read_version_from_service(const std::string &service_name, version
 
 version_t FebftSMR::read_current_from_service(const std::string &service_name, const std::string &key) {
     using ceph::decode;
+    std::lock_guard lock(this->smr_lock);
 
     auto *transaction = init_read_transaction(service_name, key);
 
@@ -312,6 +342,7 @@ MonitorDBStore::TransactionRef FebftSMR::get_pending_transaction() {
 }
 
 void FebftSMR::propose_pending() {
+    std::lock_guard lock(this->smr_lock);
 
     Transaction *result = translate_transaction(this->pending_operation);
 

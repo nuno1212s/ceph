@@ -41,6 +41,8 @@ protected:
 
     MonitorDBStore::TransactionRef pending_operation;
 
+    ceph::mutex smr_lock = ceph::make_mutex("SMR::smr_init_lock");
+
     bool plugged;
 
 public:
