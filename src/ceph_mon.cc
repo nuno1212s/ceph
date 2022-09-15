@@ -83,6 +83,9 @@ int obtain_monmap(MonitorDBStore &store, bufferlist &bl) {
         version_t latest_ver = store.get("monmap", "last_committed");
         if (store.exists("monmap", latest_ver)) {
             int err = store.get("monmap", latest_ver, bl);
+
+            dout(10) << __func__ << " error code is: " << err << dendl;
+
             ceph_assert(err == 0);
             ceph_assert(bl.length() > 0);
             dout(10) << __func__ << " read last committed monmap ver "
