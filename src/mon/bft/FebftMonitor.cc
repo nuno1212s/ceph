@@ -209,6 +209,8 @@ int FebftMonitor::preinit(){
 
     std::unique_lock l(lock);
 
+    std::cout << "Preinit fsid" << std::endl;
+
     dout(1) << "preinit fsid " << monmap->fsid << dendl;
 
     int r = sanitize_options();
@@ -216,6 +218,8 @@ int FebftMonitor::preinit(){
         derr << "option sanitization failed!" << dendl;
         return r;
     }
+
+    std::cout << "verify cluster id" << std::endl;
 
     // verify cluster_uuid
     {
@@ -228,6 +232,7 @@ int FebftMonitor::preinit(){
     }
 
     dout(1) << " reading features " << dendl;
+    std::cout << "reading features" << std::endl;
 
     // open compatset
     read_features();
@@ -235,6 +240,7 @@ int FebftMonitor::preinit(){
     // have we ever joined a quorum?
     has_ever_joined = (store->get(MONITOR_NAME, "joined") != 0);
     dout(10) << "has_ever_joined = " << (int) has_ever_joined << dendl;
+    std::cout << "has_ever_joined = " << (int) has_ever_joined << std::endl;
 
     if (!has_ever_joined) {
         // impose initial quorum restrictions?
