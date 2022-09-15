@@ -93,7 +93,8 @@ utime_t FebftSMR::get_leader_since() {
 }
 
 bool FebftSMR::is_active() const {
-    std::lock_guard lock(this->smr_lock);
+    ceph_assert(ceph_mutex_is_locked(this->smr_lock));
+
     return ::is_active(this->smr_client);
 }
 
@@ -123,7 +124,8 @@ bool FebftSMR::is_writeable() {
 }
 
 bool FebftSMR::is_writing() const {
-    std::lock_guard lock(this->smr_lock);
+    ceph_assert(ceph_mutex_is_locked(this->smr_lock));
+
     return ::is_writing(this->smr_client);
 }
 
@@ -192,19 +194,22 @@ void FebftSMR::dispatch(MonOpRequestRef op) {
 
 utime_t FebftSMR::get_last_commit_time() const {
 
-    std::lock_guard lock(this->smr_lock);
+    ceph_assert(ceph_mutex_is_locked(this->smr_lock));
+
     auto time = ::get_last_committed_time(this->smr_client);
 
     return translate_time(time);
 }
 
 version_t FebftSMR::get_first_committed() const {
-    std::lock_guard lock(this->smr_lock);
+    ceph_assert(ceph_mutex_is_locked(this->smr_lock));
+
     return ::get_first_committed(this->smr_client);
 }
 
 version_t FebftSMR::get_version() const {
-    std::lock_guard lock(this->smr_lock);
+    ceph_assert(ceph_mutex_is_locked(this->smr_lock));
+
     return ::get_last_committed(this->smr_client);
 }
 
@@ -223,6 +228,7 @@ void FebftSMR::shutdown() {
 bool FebftSMR::read(const std::string &key, buffer::list &bl) {
 
     std::lock_guard lock(this->smr_lock);
+
     auto *transaction = init_read_transaction(get_name(), key);
 
     auto *reply = do_blocking_request(this->smr_client, transaction);
