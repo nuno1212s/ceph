@@ -27,16 +27,17 @@ Transaction *init_read_transaction(const std::string &svc_name, const std::strin
 
 FebftSMR::FebftSMR(FebftMonitor &mon, const std::string &name) : name(name), mon(mon) {
 
-    //TODO: How to get this?
-    replica_id = 2;
-
-    int n = 4, f = 1;
-
-    replica = init_replica(replica_id);
-
-    //TODO: Init main replica loop thread.
-
-    smr_client = init_client(replica_id, n, f, ctx_callback);
+    if (name.find('a') != std::string::npos) {
+        replica_id = 1;
+    } else if (name.find('b')!= std::string::npos) {
+        replica_id = 2;
+    } else if (name.find('c')!= std::string::npos) {
+        replica_id = 3;
+    } else if (name.find('d')!= std::string::npos) {
+        replica_id = 4;
+    } else {
+        replica_id = 1;
+    }
 }
 
 bool FebftSMR::is_init() const {
