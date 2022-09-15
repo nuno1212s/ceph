@@ -57,7 +57,7 @@ void FebftSMR::init() {
 
     dout(10) << __func__ << " initializing febft thread" << dendl;
 
-    std::thread init_febft_thread([this]() {
+//    std::thread init_febft_thread([this]() {
         std::lock_guard lock(this->smr_lock);
 
         dout(10) << __func__ << " initializing febft replica " << dendl;
@@ -73,7 +73,7 @@ void FebftSMR::init() {
 
         dout(10) << __func__ << " running febft replica " << dendl;
         std::thread replica_thread(f, this->replica);
-    });
+//    });
 
 }
 
