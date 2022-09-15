@@ -269,6 +269,8 @@ int FebftMonitor::preinit(){
         }
     }
 
+    std::cout << "Checking keyring" << std::endl;
+
     if (is_keyring_required()) {
         // we need to bootstrap authentication keys so we can form an
         // initial quorum.
@@ -304,6 +306,7 @@ int FebftMonitor::preinit(){
             }
         }
     }
+    std::cout << "Admin hook" << std::endl;
 
     admin_hook = new AdminHook(this);
     AdminSocket *admin_socket = cct->get_admin_socket();
@@ -328,6 +331,7 @@ int FebftMonitor::preinit(){
     }
     l.lock();
 
+    std::cout << "Adding observer" << std::endl;
     // add ourselves as a conf observer
     g_conf().add_observer(this);
 
