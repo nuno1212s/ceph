@@ -347,6 +347,7 @@ int FebftMonitor::preinit(){
     std::cout << "refresh config " << std::endl;
     auth_registry.refresh_config();
 
+    return 0;
 }
 
 int FebftMonitor::init() {
