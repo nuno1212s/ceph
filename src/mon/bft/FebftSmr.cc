@@ -39,6 +39,8 @@ FebftSMR::FebftSMR(FebftMonitor &mon, const std::string &name) : name(name), mon
     } else {
         replica_id = 1;
     }
+
+    dout(10) << __func__ << " replica id " << replica_id << dendl;
 }
 
 bool FebftSMR::is_init() const {

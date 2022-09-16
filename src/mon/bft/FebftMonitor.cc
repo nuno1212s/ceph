@@ -203,7 +203,13 @@ bool FebftMonitor::is_shutdown() const {
 
 int FebftMonitor::preinit(){
 
+    dout(1) << "Preinitializing the febft monitor " << dendl;
+
+    std::cout << "Testing some things" << std::endl;
+
     std::unique_lock l(lock);
+
+    std::cout << "Preinit fsid" << std::endl;
 
     dout(1) << "preinit fsid " << monmap->fsid << dendl;
 
@@ -212,6 +218,8 @@ int FebftMonitor::preinit(){
         derr << "option sanitization failed!" << dendl;
         return r;
     }
+
+    std::cout << "verify cluster id" << std::endl;
 
     // verify cluster_uuid
     {
@@ -223,12 +231,16 @@ int FebftMonitor::preinit(){
         }
     }
 
+    dout(1) << " reading features " << dendl;
+    std::cout << "reading features" << std::endl;
+
     // open compatset
     read_features();
 
     // have we ever joined a quorum?
     has_ever_joined = (store->get(MONITOR_NAME, "joined") != 0);
     dout(10) << "has_ever_joined = " << (int) has_ever_joined << dendl;
+    std::cout << "has_ever_joined = " << (int) has_ever_joined << std::endl;
 
     if (!has_ever_joined) {
         // impose initial quorum restrictions?
@@ -256,6 +268,8 @@ int FebftMonitor::preinit(){
             return -ENOENT;
         }
     }
+
+    std::cout << "Checking keyring" << std::endl;
 
     if (is_keyring_required()) {
         // we need to bootstrap authentication keys so we can form an
@@ -292,6 +306,7 @@ int FebftMonitor::preinit(){
             }
         }
     }
+    std::cout << "Admin hook" << std::endl;
 
     admin_hook = new AdminHook(this);
     AdminSocket *admin_socket = cct->get_admin_socket();
@@ -316,13 +331,20 @@ int FebftMonitor::preinit(){
     }
     l.lock();
 
+    std::cout << "Adding observer" << std::endl;
     // add ourselves as a conf observer
     g_conf().add_observer(this);
 
+    std::cout << "Adding auth client " << std::endl;
+
     messenger->set_auth_client(this);
+
+    std::cout << "Adding auth server " << std::endl;
     messenger->set_auth_server(this);
+    std::cout << "Adding auth client messenger " << std::endl;
     mgr_messenger->set_auth_client(this);
 
+    std::cout << "refresh config " << std::endl;
     auth_registry.refresh_config();
 
     return 0;
@@ -331,6 +353,7 @@ int FebftMonitor::preinit(){
 int FebftMonitor::init() {
 
     dout(2) << "init" << dendl;
+    std::cout << "init " << std::endl;
     std::lock_guard l(lock);
 
     finisher.start();
@@ -341,10 +364,12 @@ int FebftMonitor::init() {
 
     cpu_tp.start();
 
+    std::cout << "init FEBFT " << std::endl;
     febft->init();
     // i'm ready!
     messenger->add_dispatcher_tail(this);
 
+    std::cout << "init mgr client" << std::endl;
     // kickstart pet mgrclient
     mgr_client.init();
     mgr_messenger->add_dispatcher_tail(&mgr_client);
