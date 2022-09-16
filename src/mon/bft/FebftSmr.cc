@@ -29,15 +29,15 @@ Transaction *init_read_transaction(const std::string &svc_name, const std::strin
 FebftSMR::FebftSMR(FebftMonitor &mon, const std::string &name, const std::string& mon_name) : name(name), mon(mon) {
 
     if (mon_name.find('a') != std::string::npos) {
-        this->replica_id = 1;
+        this->replica_id = 0;
     } else if (mon_name.find('b') != std::string::npos) {
-        this->replica_id = 2;
-    } else if (mon_name.find('c') != std::string::npos) {
-        this->replica_id = 3;
-    } else if (mon_name.find('d') != std::string::npos) {
-        this->replica_id = 4;
-    } else {
         this->replica_id = 1;
+    } else if (mon_name.find('c') != std::string::npos) {
+        this->replica_id = 2;
+    } else if (mon_name.find('d') != std::string::npos) {
+        this->replica_id = 3;
+    } else {
+        this->replica_id = 0;
     }
 
     dout(10) << __func__ << " replica id " << this->replica_id << " for the name " << name << dendl;
