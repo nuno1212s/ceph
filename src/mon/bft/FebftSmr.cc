@@ -29,18 +29,18 @@ Transaction *init_read_transaction(const std::string &svc_name, const std::strin
 FebftSMR::FebftSMR(FebftMonitor &mon, const std::string &name) : name(name), mon(mon) {
 
     if (name.find('a') != std::string::npos) {
-        replica_id = 1;
+        this->replica_id = 1;
     } else if (name.find('b') != std::string::npos) {
-        replica_id = 2;
+        this->replica_id = 2;
     } else if (name.find('c') != std::string::npos) {
-        replica_id = 3;
+        this->replica_id = 3;
     } else if (name.find('d') != std::string::npos) {
-        replica_id = 4;
+        this->replica_id = 4;
     } else {
-        replica_id = 1;
+        this->replica_id = 1;
     }
 
-    dout(10) << __func__ << " replica id " << replica_id << dendl;
+    dout(10) << __func__ << " replica id " << this->replica_id << " for the name " << name << dendl;
 }
 
 bool FebftSMR::is_init() const {
@@ -62,7 +62,7 @@ void FebftSMR::init() {
 //    std::thread init_febft_thread([this]() {
     std::lock_guard lock(this->smr_lock);
 
-    dout(10) << __func__ << " initializing febft replica " << dendl;
+    dout(10) << __func__ << " initializing febft replica with id " << this->replica_id << dendl;
 
     auto replica_result = ::init_replica(this->replica_id);
 
