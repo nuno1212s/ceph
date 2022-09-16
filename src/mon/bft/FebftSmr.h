@@ -46,7 +46,7 @@ protected:
     bool plugged;
 
 public:
-    FebftSMR(FebftMonitor &mon, const std::string &name);
+    FebftSMR(FebftMonitor &mon, const std::string &name, const std::string &mon_name);
 
     ~FebftSMR() override = default;
 public:

@@ -26,15 +26,15 @@ Transaction *translate_transaction(MonitorDBStore::TransactionRef t);
 
 Transaction *init_read_transaction(const std::string &svc_name, const std::string &key);
 
-FebftSMR::FebftSMR(FebftMonitor &mon, const std::string &name) : name(name), mon(mon) {
+FebftSMR::FebftSMR(FebftMonitor &mon, const std::string &name, const std::string& mon_name) : name(name), mon(mon) {
 
-    if (name.find('a') != std::string::npos) {
+    if (mon_name.find('a') != std::string::npos) {
         this->replica_id = 1;
-    } else if (name.find('b') != std::string::npos) {
+    } else if (mon_name.find('b') != std::string::npos) {
         this->replica_id = 2;
-    } else if (name.find('c') != std::string::npos) {
+    } else if (mon_name.find('c') != std::string::npos) {
         this->replica_id = 3;
-    } else if (name.find('d') != std::string::npos) {
+    } else if (mon_name.find('d') != std::string::npos) {
         this->replica_id = 4;
     } else {
         this->replica_id = 1;

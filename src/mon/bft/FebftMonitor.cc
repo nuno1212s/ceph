@@ -126,7 +126,7 @@ FebftMonitor::FebftMonitor(CephContext *cct_, std::string nm, MonitorDBStore *st
 
     cpu_tp.start();
 
-    febft = std::make_unique<FebftSMR>(*this, "febft");
+    febft = std::make_unique<FebftSMR>(*this, "febft", this->name);
 
     services[PAXOS_MDSMAP] = std::make_unique<MDSMonitor>(*this, *febft, "mdsmap");
     services[PAXOS_MONMAP] = std::make_unique<MonmapMonitor>(*this, *febft, "monmap");
