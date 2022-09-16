@@ -55,7 +55,7 @@ void FebftSMR::init_logger() {}
 
 void FebftSMR::init() {
 
-    this->guard = ::init(4, 4);
+    this->guard = ::init(4, 4, this->replica_id);
 
     dout(10) << __func__ << " initializing febft thread" << dendl;
 

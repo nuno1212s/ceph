@@ -26,9 +26,6 @@ struct SeqNo;
 ///Strict log mode initializer
 struct StrictPersistentLog;
 
-///Strict log mode initializer
-struct StrictPersistentLog;
-
 /// Request Message List This has to exist because ceph handles things by having a global transaction where all servers dump their info and then Proposing this transaction (with many operations). This is kind of done by febft with its batching, so it would almost make sense to have one client per service, but that would probably require a pretty decent change so it's much easier if we also just support lists of requests on the SMR level
 struct Transaction;
 
@@ -36,7 +33,7 @@ struct TransactionReply;
 
 using CallbackContext = void(*)(void *context);
 
-///
+/// The result of attempting to initialize a replica
 struct ReplicaResult {
   Replica<CephExecutor, StrictPersistentLog> *replica;
   uint32_t error;
@@ -78,7 +75,7 @@ uint64_t get_quorum_age(CephClient *client);
 
 uint32_t get_view_seq(CephClient *client);
 
-void *init(size_t threadpool_threads, size_t async_threads);
+void *init(size_t threadpool_threads, size_t async_threads, size_t replica_id);
 
 ///Initialize a febft client
 ///Ceph will then use this client to propose operations on the SMR

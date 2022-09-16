@@ -43,7 +43,6 @@ void ctx_callback(void *context) {
  * @return
  */
 std::unique_ptr<SizedData> transform_ceph_buffer_to_rust(const ceph::buffer::list &bl) {
-
     std::unique_ptr<SizedData> sized_data{new SizedData{(uint8_t *) bl.buffers().front().c_str(), bl.length()}};
 
     return sized_data;
