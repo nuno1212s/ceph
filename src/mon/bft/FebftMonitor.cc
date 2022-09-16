@@ -335,10 +335,16 @@ int FebftMonitor::preinit(){
     // add ourselves as a conf observer
     g_conf().add_observer(this);
 
+    std::cout << "Adding auth client " << std::endl;
+
     messenger->set_auth_client(this);
+
+    std::cout << "Adding auth server " << std::endl;
     messenger->set_auth_server(this);
+    std::cout << "Adding auth client messenger " << std::endl;
     mgr_messenger->set_auth_client(this);
 
+    std::cout << "refresh config " << std::endl;
     auth_registry.refresh_config();
 
 }
