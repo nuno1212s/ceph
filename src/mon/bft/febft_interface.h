@@ -1,12 +1,10 @@
-#ifndef CEPH_FEBFT_INTERFACE_H
-#define CEPH_FEBFT_INTERFACE_H
-
 #include <cstdarg>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <ostream>
 #include <new>
+
 
 /// The current version of the wire protocol.
 static const uint32_t WireMessage_CURRENT_VERSION = 0;
@@ -28,6 +26,9 @@ struct SeqNo;
 ///Strict log mode initializer
 struct StrictPersistentLog;
 
+///Strict log mode initializer
+struct StrictPersistentLog;
+
 /// Request Message List This has to exist because ceph handles things by having a global transaction where all servers dump their info and then Proposing this transaction (with many operations). This is kind of done by febft with its batching, so it would almost make sense to have one client per service, but that would probably require a pretty decent change so it's much easier if we also just support lists of requests on the SMR level
 struct Transaction;
 
@@ -35,11 +36,17 @@ struct TransactionReply;
 
 using CallbackContext = void(*)(void *context);
 
+///
+struct ReplicaResult {
+  Replica<CephExecutor, StrictPersistentLog> *replica;
+  uint32_t error;
+  char *str;
+};
+
 struct SizedData {
   const uint8_t *data;
   size_t size;
 };
-
 
 extern "C" {
 
@@ -54,6 +61,8 @@ void dispose_of_replies(TransactionReply *replies);
 void dispose_of_transaction(Transaction *transaction);
 
 TransactionReply *do_blocking_request(CephClient *client, Transaction *request);
+
+void febft_shutdown(void *guard);
 
 uint64_t get_first_committed(CephClient *client);
 
@@ -81,7 +90,7 @@ CephRequest *init_read_req(const char *prefix, const char *key);
 ///Initialize a febft replica
 ///Ceph will not interact with the generated replica, only with the client.
 /// This replica will continue to run "independently" of ceph
-Replica<CephExecutor, StrictPersistentLog> *init_replica(uint32_t rank);
+ReplicaResult init_replica(uint32_t rank);
 
 ///Initialize a transaction object with the given requests
 ///Requests should be passed in an array (C Style) with the corresponding size
@@ -120,8 +129,6 @@ void queue_finisher(CephClient *client, void *context);
 /// as the transaction reply
 SizedData read_read_response_from(TransactionReply *response);
 
-//void shutdown(void *guard);
-
 void wait_for_active(CephClient *client, void *context);
 
 void wait_for_readable(CephClient *client, void *context);
@@ -129,5 +136,3 @@ void wait_for_readable(CephClient *client, void *context);
 void wait_for_writeable(CephClient *client, void *context);
 
 } // extern "C"
-
-#endif

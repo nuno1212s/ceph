@@ -58,10 +58,19 @@ void FebftSMR::init() {
     dout(10) << __func__ << " initializing febft thread" << dendl;
 
 //    std::thread init_febft_thread([this]() {
-        std::lock_guard lock(this->smr_lock);
+    std::lock_guard lock(this->smr_lock);
 
-        dout(10) << __func__ << " initializing febft replica " << dendl;
-        this->replica = ::init_replica(this->replica_id);
+    dout(10) << __func__ << " initializing febft replica " << dendl;
+
+    auto replica_result = ::init_replica(this->replica_id);
+
+    if (replica_result.error != 0) {
+
+        dout(10) << __func__ << " failed to initialize replica with error " << replica_result.error  << " and message " << replica_result.str << dendl;
+
+    } else {
+
+        this->replica = replica_result.replica;
 
         dout(10) << __func__ << " initializing febft client " << dendl;
         this->smr_client = ::init_client(this->replica_id, 4, 1, ::ctx_callback);
@@ -74,6 +83,7 @@ void FebftSMR::init() {
         dout(10) << __func__ << " running febft replica " << dendl;
         std::thread replica_thread(f, this->replica);
 //    });
+    }
 
 }
 

@@ -128,7 +128,6 @@ FebftMonitor::FebftMonitor(CephContext *cct_, std::string nm, MonitorDBStore *st
 
     febft = std::make_unique<FebftSMR>(*this, "febft");
 
-
     services[PAXOS_MDSMAP] = std::make_unique<MDSMonitor>(*this, *febft, "mdsmap");
     services[PAXOS_MONMAP] = std::make_unique<MonmapMonitor>(*this, *febft, "monmap");
     services[PAXOS_OSDMAP] = std::make_unique<OSDMonitor>(cct, *this, *febft, "osdmap");
@@ -202,7 +201,7 @@ bool FebftMonitor::is_shutdown() const {
     return febft->is_shutdown();
 }
 
-int FebftMonitor::preinit() {
+int FebftMonitor::preinit(){
 
     std::unique_lock l(lock);
 
@@ -326,6 +325,7 @@ int FebftMonitor::preinit() {
 
     auth_registry.refresh_config();
 
+    return 0;
 }
 
 int FebftMonitor::init() {
