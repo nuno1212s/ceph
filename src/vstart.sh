@@ -941,7 +941,7 @@ EOF
     # start monitors
     for f in $MONS
     do
-        run 'mon' $f $CEPH_BIN/ceph-mon -i $f $ARGS $CMON_ARGS
+        run 'mon' $f $CEPH_BIN/ceph-mon -i $f $ARGS $CMON_ARGS &> "$CEPH_OUT_DIR/mon.a.stdlog"
     done
 }
 
