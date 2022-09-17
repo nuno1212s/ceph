@@ -15,6 +15,8 @@ struct CephExecutor;
 
 struct CephRequest;
 
+struct NoPersistentLog;
+
 /// Represents a replica in `febft`.
 template<typename S = void, typename T = void>
 struct Replica;
@@ -22,9 +24,6 @@ struct Replica;
 /// Represents a sequence number attributed to a client request
 /// during a `Consensus` instance.
 struct SeqNo;
-
-///Strict log mode initializer
-struct StrictPersistentLog;
 
 /// Request Message List This has to exist because ceph handles things by having a global transaction where all servers dump their info and then Proposing this transaction (with many operations). This is kind of done by febft with its batching, so it would almost make sense to have one client per service, but that would probably require a pretty decent change so it's much easier if we also just support lists of requests on the SMR level
 struct Transaction;
@@ -35,7 +34,7 @@ using CallbackContext = void(*)(void *context);
 
 /// The result of attempting to initialize a replica
 struct ReplicaResult {
-  Replica<CephExecutor, StrictPersistentLog> *replica;
+  Replica<CephExecutor, NoPersistentLog> *replica;
   uint32_t error;
   char *str;
 };
@@ -47,7 +46,7 @@ struct SizedData {
 
 extern "C" {
 
-void block_on_replica(Replica<CephExecutor, StrictPersistentLog> *replica);
+void block_on_replica(Replica<CephExecutor, NoPersistentLog> *replica);
 
 ///Dispose of the given replies. This will deallocate the memory
 /// Corresponding to these replies
