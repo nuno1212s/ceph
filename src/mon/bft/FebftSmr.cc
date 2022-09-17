@@ -81,6 +81,9 @@ void FebftSMR::init() {
         if (client_result.error != 0) {
             dout(10) << __func__ << " failed to initialize client with error " << client_result.error << " and message "
                      << client_result.str << dendl;
+
+            exit(client_result.error);
+
         } else {
 
             this->smr_client = client_result.client;
