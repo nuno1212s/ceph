@@ -123,8 +123,6 @@ utime_t FebftSMR::get_leader_since() {
 }
 
 bool FebftSMR::is_active() const {
-    ceph_assert(ceph_mutex_is_locked(this->smr_lock));
-
     return ::is_active(this->smr_client);
 }
 
@@ -154,8 +152,6 @@ bool FebftSMR::is_writeable() {
 }
 
 bool FebftSMR::is_writing() const {
-    ceph_assert(ceph_mutex_is_locked(this->smr_lock));
-
     return ::is_writing(this->smr_client);
 }
 
@@ -224,7 +220,7 @@ void FebftSMR::dispatch(MonOpRequestRef op) {
 
 utime_t FebftSMR::get_last_commit_time() const {
 
-    ceph_assert(ceph_mutex_is_locked(this->smr_lock));
+    //ceph_assert(ceph_mutex_is_locked(this->smr_lock));
 
     auto time = ::get_last_committed_time(this->smr_client);
 
@@ -232,13 +228,13 @@ utime_t FebftSMR::get_last_commit_time() const {
 }
 
 version_t FebftSMR::get_first_committed() const {
-    ceph_assert(ceph_mutex_is_locked(this->smr_lock));
+    //ceph_assert(ceph_mutex_is_locked(this->smr_lock));
 
     return ::get_first_committed(this->smr_client);
 }
 
 version_t FebftSMR::get_version() const {
-    ceph_assert(ceph_mutex_is_locked(this->smr_lock));
+    //ceph_assert(ceph_mutex_is_locked(this->smr_lock));
 
     return ::get_last_committed(this->smr_client);
 }
