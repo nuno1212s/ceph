@@ -26,7 +26,7 @@ Transaction *translate_transaction(MonitorDBStore::TransactionRef t);
 
 Transaction *init_read_transaction(const std::string &svc_name, const std::string &key);
 
-FebftSMR::FebftSMR(FebftMonitor &mon, const std::string &name, const std::string& mon_name) : name(name), mon(mon) {
+FebftSMR::FebftSMR(FebftMonitor &mon, const std::string &name, const std::string &mon_name) : name(name), mon(mon) {
 
     if (mon_name.find('a') != std::string::npos) {
         this->replica_id = 0;
@@ -68,7 +68,8 @@ void FebftSMR::init() {
 
     if (replica_result.error != 0) {
 
-        dout(10) << __func__ << " failed to initialize replica with error " << replica_result.error  << " and message " << replica_result.str << dendl;
+        dout(10) << __func__ << " failed to initialize replica with error " << replica_result.error << " and message "
+                 << replica_result.str << dendl;
 
     } else {
 
@@ -77,7 +78,7 @@ void FebftSMR::init() {
         dout(10) << __func__ << " initializing febft client " << dendl;
         this->smr_client = ::init_client(this->replica_id, 4, 1, ::ctx_callback);
 
-// Define a lamda expression
+    // Define a lambda expression
         auto f = [](Replica<CephExecutor, StrictPersistentLog> *replica) {
             block_on_replica(replica);
         };
