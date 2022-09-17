@@ -76,15 +76,23 @@ void FebftSMR::init() {
         this->replica = replica_result.replica;
 
         dout(10) << __func__ << " initializing febft client " << dendl;
-        this->smr_client = ::init_client(this->replica_id, 4, 1, ::ctx_callback);
+        auto client_result = ::init_client(this->replica_id, 4, 1, ::ctx_callback);
 
-    // Define a lambda expression
-        auto f = [](Replica<CephExecutor, NoPersistentLog> *replica) {
-            block_on_replica(replica);
-        };
+        if (client_result.error != 0) {
+            dout(10) << __func__ << " failed to initialize client with error " << client_result.error << " and message "
+                     << client_result.str << dendl;
+        } else {
 
-        dout(10) << __func__ << " running febft replica " << dendl;
-        std::thread replica_thread(f, this->replica);
+            this->smr_client = client_result.client;
+
+            // Define a lambda expression
+            auto f = [](Replica<CephExecutor, NoPersistentLog> *replica) {
+                block_on_replica(replica);
+            };
+
+            dout(10) << __func__ << " running febft replica " << dendl;
+            std::thread replica_thread(f, this->replica);
+        }
 //    });
     }
 

@@ -5,7 +5,6 @@
 #include <ostream>
 #include <new>
 
-
 /// The current version of the wire protocol.
 static const uint32_t WireMessage_CURRENT_VERSION = 0;
 
@@ -29,6 +28,13 @@ struct SeqNo;
 struct Transaction;
 
 struct TransactionReply;
+
+/// The result of attempting to initialize a client
+struct ClientResult {
+  CephClient *client;
+  uint32_t error;
+  char *str;
+};
 
 using CallbackContext = void(*)(void *context);
 
@@ -78,7 +84,7 @@ void *init(size_t threadpool_threads, size_t async_threads, size_t replica_id);
 
 ///Initialize a febft client
 ///Ceph will then use this client to propose operations on the SMR
-CephClient *init_client(uint32_t rank, size_t n, size_t f, CallbackContext callback);
+ClientResult init_client(uint32_t rank, size_t n, size_t f, CallbackContext callback);
 
 ///Initialize a read request
 CephRequest *init_read_req(const char *prefix, const char *key);
