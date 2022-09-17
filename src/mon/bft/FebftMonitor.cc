@@ -353,7 +353,6 @@ int FebftMonitor::preinit(){
 int FebftMonitor::init() {
 
     dout(2) << "init" << dendl;
-    std::cout << "init " << std::endl;
     std::lock_guard l(lock);
 
     finisher.start();
@@ -364,12 +363,14 @@ int FebftMonitor::init() {
 
     cpu_tp.start();
 
-    std::cout << "init FEBFT " << std::endl;
+    dout(2) << "init FEBFT" << dendl;
     febft->init();
+
+    dout(2) << " Adding dispatcher tail" << dendl;
     // i'm ready!
     messenger->add_dispatcher_tail(this);
 
-    std::cout << "init mgr client" << std::endl;
+    dout(2) << "init mgr client" << dendl;
     // kickstart pet mgrclient
     mgr_client.init();
     mgr_messenger->add_dispatcher_tail(&mgr_client);
