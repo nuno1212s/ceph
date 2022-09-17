@@ -79,7 +79,7 @@ void FebftSMR::init() {
         this->smr_client = ::init_client(this->replica_id, 4, 1, ::ctx_callback);
 
     // Define a lambda expression
-        auto f = [](Replica<CephExecutor, StrictPersistentLog> *replica) {
+        auto f = [](Replica<CephExecutor, NoPersistentLog> *replica) {
             block_on_replica(replica);
         };
 
