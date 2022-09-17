@@ -10,7 +10,7 @@ struct CephClient;
 template<typename S , typename T >
 struct Replica;
 struct CephExecutor;
-struct StrictPersistentLog;
+struct NoPersistentLog;
 
 class FebftSMR : public SMRProtocol {
 
