@@ -32,7 +32,7 @@ protected:
      * of the replica running thread so we can then also cancel it when we need.
      *
      */
-    Replica<CephExecutor, StrictPersistentLog> *replica;
+    Replica<CephExecutor, NoPersistentLog> *replica;
 
     /**
      * The febft ID of the replica corresponding to this system
