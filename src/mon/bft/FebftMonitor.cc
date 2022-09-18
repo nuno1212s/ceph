@@ -177,6 +177,85 @@ const char *FebftMonitor::get_state_name() const {
 
 }
 
+void FebftMonitor::bootstrap() {
+
+    dout(10) << "bootstrap" << dendl;
+
+    if (monmap->get_epoch() == 0) {
+        dout(10) << "reverting to legacy ranks for seed monmap (epoch 0)" << dendl;
+        monmap->calc_legacy_ranks();
+    }
+    dout(10) << "monmap " << *monmap << dendl;
+    {
+        auto from_release = monmap->min_mon_release;
+        ostringstream err;
+        if (!can_upgrade_from(from_release, "min_mon_release", err)) {
+            derr << "current monmap has " << err.str() << " stopping." << dendl;
+            exit(0);
+        }
+    }
+    // note my rank
+    int newrank = monmap->get_rank(messenger->get_myaddrs());
+    if (newrank < 0 && rank >= 0) {
+        // was i ever part of the quorum?
+        if (has_ever_joined) {
+            dout(0) << " removed from monmap, suicide." << dendl;
+            exit(0);
+        }
+    }
+    if (newrank >= 0 &&
+        monmap->get_addrs(newrank) != messenger->get_myaddrs()) {
+        dout(0) << " monmap addrs for rank " << newrank << " changed, i am "
+                << messenger->get_myaddrs()
+                << ", monmap is " << monmap->get_addrs(newrank) << ", respawning"
+                << dendl;
+
+        if (monmap->get_epoch()) {
+            // store this map in temp mon_sync location so that we use it on
+            // our next startup
+            derr << " stashing newest monmap " << monmap->get_epoch()
+                 << " for next startup" << dendl;
+            bufferlist bl;
+            monmap->encode(bl, -1);
+            auto t(std::make_shared<MonitorDBStore::Transaction>());
+            t->put("mon_sync", "temp_newer_monmap", bl);
+            store->apply_transaction(t);
+        }
+    }
+    if (newrank != rank) {
+        dout(0) << " my rank is now " << newrank << " (was " << rank << ")" << dendl;
+        messenger->set_myname(entity_name_t::MON(newrank));
+        rank = newrank;
+        // reset all connections, or else our peers will think we are someone else.
+        messenger->mark_down_all();
+    }
+
+    // sync store
+    if (g_conf()->mon_compact_on_bootstrap) {
+        dout(10) << "bootstrap -- triggering compaction" << dendl;
+        store->compact();
+        dout(10) << "bootstrap -- finished compaction" << dendl;
+    }
+
+    // probe monitors
+    dout(10) << "probing other monitors" << dendl;
+    for (unsigned i = 0; i < monmap->size(); i++) {
+        if ((int) i != rank)
+            send_mon_message(
+                    new MMonProbe(monmap->fsid, MMonProbe::OP_PROBE, name, has_ever_joined,
+                                  ceph_release()),
+                    i);
+    }
+    for (auto &av: extra_probe_peers) {
+        if (av != messenger->get_myaddrs()) {
+            messenger->send_to_mon(
+                    new MMonProbe(monmap->fsid, MMonProbe::OP_PROBE, name, has_ever_joined,
+                                  ceph_release()),
+                    av);
+        }
+    }
+}
+
 int FebftMonitor::get_leader() const {
     return febft->get_leader();
 }
@@ -379,6 +458,8 @@ int FebftMonitor::init() {
 
     // generate list of filestore OSDs
     osdmon()->get_filestore_osd_list();
+
+    bootstrap();
 
     // add features of myself into feature_map
     session_map.feature_map.add_mon(con_self->get_features());
