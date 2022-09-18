@@ -638,6 +638,8 @@ int main(int argc, const char **argv) {
 
     MonitorDBStore *store = new MonitorDBStore(g_conf()->mon_data);
 
+    std::cout << "Store data location is " << g_conf()->mon_data << std::endl;
+
     // make sure we aren't upgrading too fast
     {
         string val;
