@@ -1594,7 +1594,7 @@ int AbstractMonitor::handle_auth_request(
     // the initial keys (e.g., client.admin).
     if (authmon()->get_last_committed() == 0) {
         dout(10) << __func__ << " haven't formed initial quorum, EBUSY" << dendl;
-        //return -EBUSY;
+        return -EBUSY;
     }
 
     RefCountedPtr priv;

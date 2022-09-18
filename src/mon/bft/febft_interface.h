@@ -5,6 +5,7 @@
 #include <ostream>
 #include <new>
 
+
 /// The current version of the wire protocol.
 static const uint32_t WireMessage_CURRENT_VERSION = 0;
 
@@ -50,9 +51,12 @@ struct SizedData {
   size_t size;
 };
 
-extern "C" {
 
-void block_on_replica(Replica<CephExecutor, NoPersistentLog> *replica);
+
+
+
+
+extern "C" {
 
 ///Dispose of the given replies. This will deallocate the memory
 /// Corresponding to these replies
@@ -130,6 +134,8 @@ void queue_finisher(CephClient *client, void *context);
 /// Note that the sized data returned from here will only live as long
 /// as the transaction reply
 SizedData read_read_response_from(TransactionReply *response);
+
+void start_replica_thread(Replica<CephExecutor, NoPersistentLog> *replica);
 
 void wait_for_active(CephClient *client, void *context);
 

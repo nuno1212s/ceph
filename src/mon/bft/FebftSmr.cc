@@ -88,13 +88,8 @@ void FebftSMR::init() {
 
             this->smr_client = client_result.client;
 
-            // Define a lambda expression
-            auto f = [](Replica<CephExecutor, NoPersistentLog> *replica) {
-                block_on_replica(replica);
-            };
-
             dout(10) << __func__ << " running febft replica " << dendl;
-            //std::thread replica_thread(f, this->replica);
+            start_replica_thread(this->replica);
             dout(10) << __func__ << " Started running the replica " << dendl;
         }
 //    });
