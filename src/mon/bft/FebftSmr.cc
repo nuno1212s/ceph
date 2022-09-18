@@ -100,22 +100,18 @@ void FebftSMR::init() {
 }
 
 epoch_t FebftSMR::get_epoch() {
-    std::lock_guard lock(this->smr_lock);
     return ::get_view_seq(this->smr_client);
 }
 
 int FebftSMR::quorum_age() {
-    std::lock_guard lock(this->smr_lock);
     return ::get_quorum_age(this->smr_client);
 }
 
 int FebftSMR::get_leader() {
-    std::lock_guard lock(this->smr_lock);
     return ::get_leader(this->smr_client);
 }
 
 utime_t FebftSMR::get_leader_since() {
-    std::lock_guard lock(this->smr_lock);
     return translate_time(::get_leader_since(this->smr_client));
 }
 
@@ -144,7 +140,6 @@ bool FebftSMR::is_readable(version_t v) const {
 }
 
 bool FebftSMR::is_writeable() {
-    std::lock_guard lock(this->smr_lock);
     return ::is_writeable(this->smr_client);
 }
 
@@ -156,7 +151,6 @@ void FebftSMR::wait_for_active(MonOpRequestRef o, Context *c) {
     if (o)
         o->mark_event("febft:wait_for_active");
 
-    std::lock_guard lock(this->smr_lock);
     ::wait_for_active(this->smr_client, c);
 }
 
@@ -165,7 +159,6 @@ void FebftSMR::wait_for_readable(MonOpRequestRef o, Context *c, version_t ver) {
     if (o)
         o->mark_event("febft:wait_for_readable");
 
-    std::lock_guard lock(this->smr_lock);
     ::wait_for_readable(this->smr_client, c);
 }
 
@@ -173,7 +166,6 @@ void FebftSMR::wait_for_writeable(MonOpRequestRef o, Context *c) {
     if (o)
         o->mark_event("febft:wait_for_writeable");
 
-    std::lock_guard lock(this->smr_lock);
     ::wait_for_writeable(this->smr_client, c);
 }
 
@@ -191,7 +183,6 @@ void FebftSMR::unplug() {
 }
 
 void FebftSMR::queue_pending_finisher(Context *onfinished) {
-    std::lock_guard lock(this->smr_lock);
     ::queue_finisher(this->smr_client, onfinished);
 }
 
@@ -250,7 +241,6 @@ void FebftSMR::shutdown() {
 
 bool FebftSMR::read(const std::string &key, buffer::list &bl) {
 
-    std::lock_guard lock(this->smr_lock);
 
     auto *transaction = init_read_transaction(get_name(), key);
 
@@ -290,7 +280,6 @@ version_t FebftSMR::read_current(buffer::list &bl) {
 
 int FebftSMR::read_version_from_service(const std::string &service_name, const std::string &key, buffer::list &bl) {
 
-    std::lock_guard lock(this->smr_lock);
     auto *transaction = init_read_transaction(service_name, key);
 
     auto *reply = do_blocking_request(this->smr_client, transaction);
@@ -323,7 +312,6 @@ int FebftSMR::read_version_from_service(const std::string &service_name, version
 
 version_t FebftSMR::read_current_from_service(const std::string &service_name, const std::string &key) {
     using ceph::decode;
-    std::lock_guard lock(this->smr_lock);
 
     auto *transaction = init_read_transaction(service_name, key);
 
