@@ -99,6 +99,8 @@ public:
     void enable_stretch_mode() override;
     void set_mon_crush_location(const std::string& loc) override;
 
+protected:
+
 
     FebftMonitor(CephContext *cct_, std::string nm, MonitorDBStore *store, Messenger *m, Messenger *mgr_m,
                                MonMap *map);

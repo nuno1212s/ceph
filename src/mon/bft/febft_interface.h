@@ -21,6 +21,7 @@ struct NoPersistentLog;
 template<typename S = void, typename T = void>
 struct Replica;
 
+
 /// Represents a sequence number attributed to a client request
 /// during a `Consensus` instance.
 struct SeqNo;
@@ -39,6 +40,8 @@ struct ClientResult {
 
 using CallbackContext = void(*)(void *context);
 
+using HandleComittedInSMR = void(*)(void *monitor, uint64_t seq_no);
+
 /// The result of attempting to initialize a replica
 struct ReplicaResult {
   Replica<CephExecutor, NoPersistentLog> *replica;
@@ -50,11 +53,6 @@ struct SizedData {
   const uint8_t *data;
   size_t size;
 };
-
-
-
-
-
 
 extern "C" {
 
@@ -88,7 +86,12 @@ void *init(size_t threadpool_threads, size_t async_threads, size_t replica_id);
 
 ///Initialize a febft client
 ///Ceph will then use this client to propose operations on the SMR
-ClientResult init_client(uint32_t rank, size_t n, size_t f, CallbackContext callback);
+ClientResult init_client(uint32_t rank,
+                         size_t n,
+                         size_t f,
+                         CallbackContext callback,
+                         void *smr_ref,
+                         HandleComittedInSMR handle_committed);
 
 ///Initialize a read request
 CephRequest *init_read_req(const char *prefix, const char *key);

@@ -132,6 +132,9 @@ protected:
 
     void propose_pending();
 
+public:
+    void handle_committed_values(version_t seq_no);
+
 
 private:
     std::string get_name() const override;

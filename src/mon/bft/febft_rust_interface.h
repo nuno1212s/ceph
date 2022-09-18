@@ -8,6 +8,12 @@
 //Handle commit phase
 //Handle executed
 
+void handle_refresh(void *smr, uint64_t seqno) {
+    auto febft_smr = (FebftSMR * ) smr;
+
+    febft_smr->handle_committed_values(seqno);
+}
+
 void handle_smr_prepare_phase(void *smr, uint64_t seqno) {
     //state updating
 }

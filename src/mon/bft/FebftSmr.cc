@@ -76,7 +76,7 @@ void FebftSMR::init() {
         this->replica = replica_result.replica;
 
         dout(10) << __func__ << " initializing febft client " << dendl;
-        auto client_result = ::init_client(this->replica_id + 1, 4, 1, ::ctx_callback);
+        auto client_result = ::init_client(this->replica_id + 1, 4, 1, ::ctx_callback, this, ::handle_refresh);
 
         if (client_result.error != 0) {
             dout(10) << __func__ << " failed to initialize client with error " << client_result.error << " and message "
@@ -391,6 +391,12 @@ bool FebftSMR::trigger_propose() {
     } else {
         return false;
     }
+}
+
+void FebftSMR::handle_committed_values(version_t seq_no) {
+    bool needs_bootstrap = false;
+
+    this->mon.refresh_from_smr(&needs_bootstrap);
 }
 
 void FebftSMR::cancel_events() {
