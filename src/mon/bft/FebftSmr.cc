@@ -240,15 +240,12 @@ void FebftSMR::shutdown() {
 }
 
 bool FebftSMR::read(const std::string &key, buffer::list &bl) {
-
-
     auto *transaction = init_read_transaction(get_name(), key);
 
     auto *reply = do_blocking_request(this->smr_client, transaction);
 
     if (!is_valid_read_response(reply)) {
 
-        dispose_of_transaction(transaction);
         dispose_of_replies(reply);
 
         return false;
@@ -258,7 +255,6 @@ bool FebftSMR::read(const std::string &key, buffer::list &bl) {
 
     append_rust_buffer_to_ceph_buffer(sized_data, bl, true);
 
-    dispose_of_transaction(transaction);
     dispose_of_replies(reply);
 
     return true;
@@ -286,7 +282,6 @@ int FebftSMR::read_version_from_service(const std::string &service_name, const s
 
     if (!is_valid_read_response(reply)) {
 
-        dispose_of_transaction(transaction);
         dispose_of_replies(reply);
 
         return -ENOENT;
@@ -296,7 +291,6 @@ int FebftSMR::read_version_from_service(const std::string &service_name, const s
 
     append_rust_buffer_to_ceph_buffer(sized_data, bl, true);
 
-    dispose_of_transaction(transaction);
     dispose_of_replies(reply);
 
     return 0;
@@ -319,10 +313,11 @@ version_t FebftSMR::read_current_from_service(const std::string &service_name, c
 
     if (!is_valid_read_response(reply)) {
 
-        dispose_of_transaction(transaction);
         dispose_of_replies(reply);
 
-        return false;
+        dout(10) << "Failed to read current version from service, as there is no such key" << dendl;
+
+        return 1;
     }
 
     SizedData sized_data = read_read_response_from(reply);
@@ -331,7 +326,6 @@ version_t FebftSMR::read_current_from_service(const std::string &service_name, c
 
     append_rust_buffer_to_ceph_buffer(sized_data, bl, true);
 
-    dispose_of_transaction(transaction);
     dispose_of_replies(reply);
 
     ceph_assert(bl.length());

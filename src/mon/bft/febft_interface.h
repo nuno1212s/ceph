@@ -121,7 +121,7 @@ bool is_leader(CephClient *client);
 bool is_valid_read_response(TransactionReply *response);
 
 ///Checks if the given transaction reply has all valid responses.
-/// If a single transaction was not sucessfull this reports.
+/// If a single transaction was not successfull this reports.
 /// In theory, ceph's model kinda expects ACID transactions, but that would be for a later time, and would be
 /// at the executor level.
 bool is_valid_write_response(TransactionReply *response);
