@@ -91,8 +91,6 @@ void FebftSMR::init() {
             dout(10) << __func__ << " running febft replica " << dendl;
             start_replica_thread(this->replica);
             dout(10) << __func__ << " Started running the replica, refreshing" << dendl;
-
-            this->handle_committed_values(0);
         }
 //    });
     }
