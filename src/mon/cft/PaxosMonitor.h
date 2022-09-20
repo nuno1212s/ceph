@@ -6,7 +6,6 @@
 #include "PaxosSmr.h"
 
 
-
 class PaxosMonitor : public AbstractMonitor {
     // -- monitor state --
 private:
@@ -24,13 +23,20 @@ private:
 public:
     static const char *get_state_name(int s) {
         switch (s) {
-            case STATE_PROBING: return "probing";
-            case STATE_SYNCHRONIZING: return "synchronizing";
-            case STATE_ELECTING: return "electing";
-            case STATE_LEADER: return "leader";
-            case STATE_PEON: return "peon";
-            case STATE_SHUTDOWN: return "shutdown";
-            default: return "???";
+            case STATE_PROBING:
+                return "probing";
+            case STATE_SYNCHRONIZING:
+                return "synchronizing";
+            case STATE_ELECTING:
+                return "electing";
+            case STATE_LEADER:
+                return "leader";
+            case STATE_PEON:
+                return "peon";
+            case STATE_SHUTDOWN:
+                return "shutdown";
+            default:
+                return "???";
         }
     }
 
@@ -39,11 +45,17 @@ public:
     }
 
     bool is_init() const override { return state == STATE_INIT; }
+
     bool is_shutdown() const override { return state == STATE_SHUTDOWN; }
+
     bool is_probing() const { return state == STATE_PROBING; }
+
     bool is_synchronizing() const { return state == STATE_SYNCHRONIZING; }
+
     bool is_electing() const { return state == STATE_ELECTING; }
+
     bool is_leader() const { return state == STATE_LEADER; }
+
     bool is_peon() const { return state == STATE_PEON; }
 
     const utime_t &get_leader_since() const;
@@ -58,6 +70,7 @@ public:
 private:
     std::unique_ptr<PaxosSMR> paxos;
     Elector elector;
+
     friend class Elector;
 
     /// features we require of peers (based on on-disk compatset)
@@ -78,8 +91,10 @@ private:
     std::set<std::string> up_mon_buckets; // locations with a live mon
     void do_stretch_mode_election_work();
 
-    bool session_stretch_allowed(MonSession *s, MonOpRequestRef& op);
+    bool session_stretch_allowed(MonSession *s, MonOpRequestRef &op);
+
     void disconnect_disallowed_stretch_sessions();
+
     void set_elector_disallowed_leaders(bool allow_election);
 
 public:
@@ -108,7 +123,7 @@ public:
         return leader_since;
     }
 
-    std::map<std::string,std::string> crush_loc;
+    std::map<std::string, std::string> crush_loc;
     bool need_set_crush_loc{false};
 
     void notify_new_monmap(bool can_change_external_state) override;
@@ -116,28 +131,39 @@ public:
 private:
     void _reset();   ///< called from bootstrap, start_, or join_election
     void wait_for_paxos_write();
+
     void _finish_svc_election(); ///< called by {win,lose}_election
     void respawn();
+
 public:
     void bootstrap();
+
     void join_election();
+
     void start_election();
+
     void win_standalone_election();
+
     // end election (called by Elector)
-    void win_election(epoch_t epoch, const std::set<int>& q,
+    void win_election(epoch_t epoch, const std::set<int> &q,
                       uint64_t features,
-                      const mon_feature_t& mon_features,
+                      const mon_feature_t &mon_features,
                       ceph_release_t min_mon_release,
-                      const std::map<int,Metadata>& metadata);
-    void lose_election(epoch_t epoch, std::set<int>& q, int l,
+                      const std::map<int, Metadata> &metadata);
+
+    void lose_election(epoch_t epoch, std::set<int> &q, int l,
                        uint64_t features,
-                       const mon_feature_t& mon_features,
+                       const mon_feature_t &mon_features,
                        ceph_release_t min_mon_release);
+
     // end election (called by Elector)
     void finish_election();
+
 public:
     bool is_stretch_mode() override { return stretch_mode_engaged; }
+
     bool is_degraded_stretch_mode() override { return degraded_stretch_mode; }
+
     bool is_recovering_stretch_mode() override { return recovering_stretch_mode; }
 
     /**
@@ -153,17 +179,26 @@ public:
      * updates across the entire cluster.
      */
     void try_engage_stretch_mode() override;
+
     void maybe_go_degraded_stretch_mode() override;
-    void trigger_degraded_stretch_mode(const std::set<std::string>& dead_mons,
-                                       const std::set<int>& dead_buckets) override;
+
+    void trigger_degraded_stretch_mode(const std::set<std::string> &dead_mons,
+                                       const std::set<int> &dead_buckets) override;
+
     void set_degraded_stretch_mode() override;
+
     void go_recovery_stretch_mode() override;
+
     void set_recovery_stretch_mode() override;
+
     void trigger_healthy_stretch_mode() override;
+
     void set_healthy_stretch_mode() override;
+
     //This is also not implemented in regular ceph
     void enable_stretch_mode() override;
-    void set_mon_crush_location(const std::string& loc) override;
+
+    void set_mon_crush_location(const std::string &loc) override;
 
     /**
      * @defgroup Monitor_h_sync Synchronization
@@ -177,7 +212,7 @@ public:
         uint64_t cookie;       ///< unique cookie for this sync attempt
         utime_t timeout;       ///< when we give up and expire this attempt
         version_t last_committed; ///< last paxos version on peer
-        std::pair<std::string,std::string> last_key; ///< last key sent to (or on) peer
+        std::pair<std::string, std::string> last_key; ///< last key sent to (or on) peer
         bool full;             ///< full scan?
         MonitorDBStore::Synchronizer synchronizer;   ///< iterator
 
@@ -276,6 +311,12 @@ public:
      */
     void sync_force(ceph::Formatter *f);
 
+    /*
+    * this is the closest thing to a traditional 'mkfs' for ceph.
+    * initialize the monitor state machines to their initial values.
+    */
+    int mkfs(ceph::buffer::list &osdmapbl) override;
+
 private:
     /**
      * store critical state for safekeeping during sync
@@ -323,22 +364,26 @@ private:
     void _sync_reply_no_cookie(MonOpRequestRef op);
 
     void handle_sync_get_cookie(MonOpRequestRef op);
+
     void handle_sync_get_chunk(MonOpRequestRef op);
 
     void handle_sync_cookie(MonOpRequestRef op);
+
     void handle_sync_chunk(MonOpRequestRef op);
+
     void handle_sync_no_cookie(MonOpRequestRef op);
 
     //These are not implemented in the original ceph version ?
     void handle_sync_finish(MonOpRequestRef op);
+
     void handle_sync_forward(MonOpRequestRef op);
 
     /**
      * @} // Synchronization
      */
 
-    std::list<Context*> waitfor_quorum;
-    std::list<Context*> maybe_wait_for_quorum;
+    std::list<Context *> waitfor_quorum;
+    std::list<Context *> maybe_wait_for_quorum;
 
 public:
 
@@ -347,7 +392,7 @@ public:
      * @{
      */
     version_t scrub_version{};            ///< paxos version we are scrubbing
-    std::map<int,ScrubResult> scrub_result;  ///< results so far
+    std::map<int, ScrubResult> scrub_result;  ///< results so far
 
     /**
      * trigger a cross-mon scrub
@@ -355,31 +400,44 @@ public:
      * Verify all mons are storing identical content
      */
     int scrub_start();
+
     int scrub();
+
     void handle_scrub(MonOpRequestRef op);
+
     bool _scrub(ScrubResult *r,
-                std::pair<std::string,std::string> *start,
+                std::pair<std::string, std::string> *start,
                 int *num_keys);
+
     void scrub_check_results();
+
     void scrub_timeout();
+
     void scrub_finish();
+
     void scrub_reset();
+
     void scrub_update_interval(ceph::timespan interval);
 
     Context *scrub_event{};       ///< periodic event to trigger scrub (leader)
     Context *scrub_timeout_event{};  ///< scrub round timeout (leader)
     void scrub_event_start();
+
     void scrub_event_cancel();
+
     void scrub_reset_timeout();
+
     void scrub_cancel_timeout();
 
     struct ScrubState {
-        std::pair<std::string,std::string> last_key; ///< last scrubbed key
+        std::pair<std::string, std::string> last_key; ///< last scrubbed key
         bool finished;
 
-        ScrubState() : finished(false) { }
-        virtual ~ScrubState() { }
+        ScrubState() : finished(false) {}
+
+        virtual ~ScrubState() {}
     };
+
     std::shared_ptr<ScrubState> scrub_state; ///< keeps track of current scrub
 
     /**
@@ -394,10 +452,13 @@ public:
     Context *probe_timeout_event = nullptr;  // for probing
 
     void reset_probe_timeout();
+
     void cancel_probe_timeout();
+
     void probe_timeout(int r);
 
     void handle_probe(MonOpRequestRef op);
+
     /**
      * Handle a Probe Operation, replying with our name, quorum and known versions.
      *
@@ -413,6 +474,7 @@ public:
      * @param m A Probe message, with an operation of type Probe.
      */
     void handle_probe_probe(MonOpRequestRef op);
+
     void handle_probe_reply(MonOpRequestRef op);
 
     /**
@@ -420,7 +482,8 @@ public:
      */
 
     void get_mon_status(ceph::Formatter *f) override;
-    void _quorum_status(ceph::Formatter *f, std::ostream& ss) override;
+
+    void _quorum_status(ceph::Formatter *f, std::ostream &ss) override;
 
     //Forward requests to the leader
     void forward_request_leader(MonOpRequestRef op) override;
@@ -431,17 +494,18 @@ public:
     void resend_routed_requests();
 
     void waitlist_or_zap_client(MonOpRequestRef op);
+
     void _ms_dispatch(Message *m) override;
 
-    int do_admin_command(std::string_view command, const cmdmap_t& cmdmap,
+    int do_admin_command(std::string_view command, const cmdmap_t &cmdmap,
                          ceph::Formatter *f,
-                         std::ostream& err,
-                         std::ostream& out) override;
+                         std::ostream &err,
+                         std::ostream &out) override;
 
     void handle_get_version(MonOpRequestRef op) override;
 
-    bool _add_bootstrap_peer_hint(std::string_view cmd, const cmdmap_t& cmdmap,
-                                  std::ostream& ss);
+    bool _add_bootstrap_peer_hint(std::string_view cmd, const cmdmap_t &cmdmap,
+                                  std::ostream &ss);
 
 public:
 
@@ -455,9 +519,8 @@ public:
     void _dispatch_op(MonOpRequestRef op) override;
 
 
-
 public:
-    PaxosMonitor(CephContext* cct_, std::string nm, MonitorDBStore *store,  Messenger *m, Messenger *mgr_m, MonMap *map);
+    PaxosMonitor(CephContext *cct_, std::string nm, MonitorDBStore *store, Messenger *m, Messenger *mgr_m, MonMap *map);
 };
 
 

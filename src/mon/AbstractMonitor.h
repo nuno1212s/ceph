@@ -665,7 +665,7 @@ public:
 
     void handle_signal(int sig);
 
-    int mkfs(ceph::buffer::list &osdmapbl);
+    virtual int mkfs(ceph::buffer::list &osdmapbl) = 0;
 
     /**
      * check cluster_fsid file

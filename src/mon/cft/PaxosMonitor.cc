@@ -260,11 +260,11 @@ void PaxosMonitor::do_stretch_mode_election_work() {
         !is_leader())
         return;
     dout(20) << "checking for degraded stretch mode" << dendl;
-    map <string, set<string>> old_dead_buckets;
+    map<string, set<string>> old_dead_buckets;
     old_dead_buckets.swap(dead_mon_buckets);
     up_mon_buckets.clear();
     // identify if we've lost a CRUSH bucket, request OSDMonitor check for death
-    map <string, set<string>> down_mon_buckets;
+    map<string, set<string>> down_mon_buckets;
     for (unsigned i = 0; i < monmap->size(); ++i) {
         const auto &mi = monmap->mon_info[monmap->get_name(i)];
         auto ci = mi.crush_loc.find(stretch_bucket_divider);
@@ -370,7 +370,7 @@ void PaxosMonitor::maybe_go_degraded_stretch_mode() {
     // filter out the tiebreaker zone and check if remaining sites are down by OSDs too
     const auto &mi = monmap->mon_info[monmap->tiebreaker_mon];
     auto ci = mi.crush_loc.find(stretch_bucket_divider);
-    map <string, set<string>> filtered_dead_buckets = dead_mon_buckets;
+    map<string, set<string>> filtered_dead_buckets = dead_mon_buckets;
     filtered_dead_buckets.erase(ci->second);
 
     set<int> matched_down_buckets;
@@ -914,7 +914,7 @@ void PaxosMonitor::finish_election() {
     // am i named and located properly?
     string cur_name = monmap->get_name(messenger->get_myaddrs());
     const auto my_infop = monmap->mon_info.find(cur_name);
-    const map <string, string> &map_crush_loc = my_infop->second.crush_loc;
+    const map<string, string> &map_crush_loc = my_infop->second.crush_loc;
 
     if (cur_name != name ||
         (need_set_crush_loc && map_crush_loc != crush_loc)) {
@@ -1525,7 +1525,7 @@ void PaxosMonitor::handle_command(MonOpRequestRef op) {
         mgr_proxy_bytes += size;
         dout(10) << __func__ << " proxying mgr command (+" << size
                  << " -> " << mgr_proxy_bytes << ")" << dendl;
-        C_MgrProxyCommand *fin = new C_MgrProxyCommand((AbstractMonitor*) this, op, size);
+        C_MgrProxyCommand *fin = new C_MgrProxyCommand((AbstractMonitor *) this, op, size);
         mgr_client.start_command(m->cmd,
                                  m->get_data(),
                                  &fin->outbl,
@@ -2271,8 +2271,8 @@ void PaxosMonitor::handle_get_version(MonOpRequestRef op) {
 }
 
 bool PaxosMonitor::_add_bootstrap_peer_hint(std::string_view cmd,
-                                       const cmdmap_t &cmdmap,
-                                       ostream &ss) {
+                                            const cmdmap_t &cmdmap,
+                                            ostream &ss) {
     if (is_leader() || is_peon()) {
         ss << "mon already active; ignoring bootstrap hint";
         return true;
@@ -3893,21 +3893,106 @@ int PaxosMonitor::init() {
     return 0;
 }
 
-void PaxosMonitor::init_paxos()
-{
+void PaxosMonitor::init_paxos() {
     dout(10) << __func__ << dendl;
     paxos->init();
 
     // init services
-    for (auto& svc : services) {
+    for (auto &svc: services) {
         svc->init();
     }
 
     refresh_from_smr(NULL);
 }
 
-void PaxosMonitor::refresh_from_smr(bool *need_bootstrap)
-{
+/*
+ * this is the closest thing to a traditional 'mkfs' for ceph.
+ * initialize the monitor state machines to their initial values.
+ */
+int PaxosMonitor::mkfs(ceph::buffer::list &osdmapbl) {
+    auto t(std::make_shared<MonitorDBStore::Transaction>());
+
+    // verify cluster fsid
+    int r = check_fsid();
+    if (r < 0 && r != -ENOENT)
+        return r;
+
+    bufferlist magicbl;
+    magicbl.append(CEPH_MON_ONDISK_MAGIC);
+    magicbl.append("\n");
+    t->put(MONITOR_NAME, "magic", magicbl);
+
+
+    features = get_initial_supported_features();
+    write_features(t);
+
+    // save monmap, osdmap, keyring.
+    bufferlist monmapbl;
+    monmap->encode(monmapbl, CEPH_FEATURES_ALL);
+    monmap->set_epoch(0);     // must be 0 to avoid confusing first MonmapMonitor::update_from_paxos()
+    t->put("mkfs", "monmap", monmapbl);
+
+    if (osdmapbl.length()) {
+        // make sure it's a valid osdmap
+        try {
+            OSDMap om;
+            om.decode(osdmapbl);
+        }
+        catch (ceph::buffer::error &e) {
+            derr << "error decoding provided osdmap: " << e.what() << dendl;
+            return -EINVAL;
+        }
+        t->put("mkfs", "osdmap", osdmapbl);
+    }
+
+    if (is_keyring_required()) {
+        KeyRing keyring;
+        string keyring_filename;
+
+        r = ceph_resolve_file_search(g_conf()->keyring, keyring_filename);
+        if (r) {
+            if (g_conf()->key != "") {
+                string keyring_plaintext = "[mon.]\n\tkey = " + g_conf()->key +
+                                           "\n\tcaps mon = \"allow *\"\n";
+                bufferlist bl;
+                bl.append(keyring_plaintext);
+                try {
+                    auto i = bl.cbegin();
+                    keyring.decode(i);
+                }
+                catch (const ceph::buffer::error &e) {
+                    derr << "error decoding keyring " << keyring_plaintext
+                         << ": " << e.what() << dendl;
+                    return -EINVAL;
+                }
+            } else {
+                derr << "unable to find a keyring on " << g_conf()->keyring
+                     << ": " << cpp_strerror(r) << dendl;
+                return r;
+            }
+        } else {
+            r = keyring.load(g_ceph_context, keyring_filename);
+            if (r < 0) {
+                derr << "unable to load initial keyring " << g_conf()->keyring << dendl;
+                return r;
+            }
+        }
+
+        // put mon. key in external keyring; seed with everything else.
+        extract_save_mon_key(keyring);
+
+        bufferlist keyringbl;
+        keyring.encode_plaintext(keyringbl);
+        t->put("mkfs", "keyring", keyringbl);
+    }
+
+    write_fsid(t);
+    store->apply_transaction(t);
+
+    return 0;
+}
+
+void PaxosMonitor::refresh_from_smr(bool *need_bootstrap) {
     dout(10) << __func__ << dendl;
 
     bufferlist bl;
@@ -3917,17 +4002,17 @@ void PaxosMonitor::refresh_from_smr(bool *need_bootstrap)
             auto p = bl.cbegin();
             decode(fingerprint, p);
         }
-        catch (ceph::buffer::error& e) {
+        catch (ceph::buffer::error &e) {
             dout(10) << __func__ << " failed to decode cluster_fingerprint" << dendl;
         }
     } else {
         dout(10) << __func__ << " no cluster_fingerprint" << dendl;
     }
 
-    for (auto& svc : services) {
+    for (auto &svc: services) {
         svc->refresh(need_bootstrap);
     }
-    for (auto& svc : services) {
+    for (auto &svc: services) {
         svc->post_refresh();
     }
 
