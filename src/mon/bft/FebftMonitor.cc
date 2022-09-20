@@ -300,6 +300,57 @@ int FebftMonitor::preinit(){
 
     std::cout << "verify cluster id" << std::endl;
 
+    ceph_assert(!logger);
+    {
+        PerfCountersBuilder pcb(g_ceph_context, "mon", l_mon_first, l_mon_last);
+        pcb.add_u64(l_mon_num_sessions, "num_sessions", "Open sessions", "sess",
+                    PerfCountersBuilder::PRIO_USEFUL);
+        pcb.add_u64_counter(l_mon_session_add, "session_add", "Created sessions",
+                            "sadd", PerfCountersBuilder::PRIO_INTERESTING);
+        pcb.add_u64_counter(l_mon_session_rm, "session_rm", "Removed sessions",
+                            "srm", PerfCountersBuilder::PRIO_INTERESTING);
+        pcb.add_u64_counter(l_mon_session_trim, "session_trim", "Trimmed sessions",
+                            "strm", PerfCountersBuilder::PRIO_USEFUL);
+        pcb.add_u64_counter(l_mon_num_elections, "num_elections", "Elections participated in",
+                            "ecnt", PerfCountersBuilder::PRIO_USEFUL);
+        pcb.add_u64_counter(l_mon_election_call, "election_call", "Elections started",
+                            "estt", PerfCountersBuilder::PRIO_INTERESTING);
+        pcb.add_u64_counter(l_mon_election_win, "election_win", "Elections won",
+                            "ewon", PerfCountersBuilder::PRIO_INTERESTING);
+        pcb.add_u64_counter(l_mon_election_lose, "election_lose", "Elections lost",
+                            "elst", PerfCountersBuilder::PRIO_INTERESTING);
+        logger = pcb.create_perf_counters();
+        cct->get_perfcounters_collection()->add(logger);
+    }
+
+    ceph_assert(!cluster_logger);
+    {
+        PerfCountersBuilder pcb(g_ceph_context, "cluster", l_cluster_first, l_cluster_last);
+        pcb.add_u64(l_cluster_num_mon, "num_mon", "Monitors");
+        pcb.add_u64(l_cluster_num_mon_quorum, "num_mon_quorum", "Monitors in quorum");
+        pcb.add_u64(l_cluster_num_osd, "num_osd", "OSDs");
+        pcb.add_u64(l_cluster_num_osd_up, "num_osd_up", "OSDs that are up");
+        pcb.add_u64(l_cluster_num_osd_in, "num_osd_in", "OSD in state \"in\" (they are in cluster)");
+        pcb.add_u64(l_cluster_osd_epoch, "osd_epoch", "Current epoch of OSD map");
+        pcb.add_u64(l_cluster_osd_bytes, "osd_bytes", "Total capacity of cluster", NULL, 0, unit_t(UNIT_BYTES));
+        pcb.add_u64(l_cluster_osd_bytes_used, "osd_bytes_used", "Used space", NULL, 0, unit_t(UNIT_BYTES));
+        pcb.add_u64(l_cluster_osd_bytes_avail, "osd_bytes_avail", "Available space", NULL, 0, unit_t(UNIT_BYTES));
+        pcb.add_u64(l_cluster_num_pool, "num_pool", "Pools");
+        pcb.add_u64(l_cluster_num_pg, "num_pg", "Placement groups");
+        pcb.add_u64(l_cluster_num_pg_active_clean, "num_pg_active_clean", "Placement groups in active+clean state");
+        pcb.add_u64(l_cluster_num_pg_active, "num_pg_active", "Placement groups in active state");
+        pcb.add_u64(l_cluster_num_pg_peering, "num_pg_peering", "Placement groups in peering state");
+        pcb.add_u64(l_cluster_num_object, "num_object", "Objects");
+        pcb.add_u64(l_cluster_num_object_degraded, "num_object_degraded", "Degraded (missing replicas) objects");
+        pcb.add_u64(l_cluster_num_object_misplaced, "num_object_misplaced",
+                    "Misplaced (wrong location in the cluster) objects");
+        pcb.add_u64(l_cluster_num_object_unfound, "num_object_unfound", "Unfound objects");
+        pcb.add_u64(l_cluster_num_bytes, "num_bytes", "Size of all objects", NULL, 0, unit_t(UNIT_BYTES));
+        cluster_logger = pcb.create_perf_counters();
+    }
+
+    febft->init_logger();
+
     // verify cluster_uuid
     {
         int r = check_fsid();

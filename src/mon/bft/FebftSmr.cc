@@ -51,7 +51,54 @@ bool FebftSMR::is_shutdown() const {
     return smr_client == nullptr;
 }
 
-void FebftSMR::init_logger() {}
+void FebftSMR::init_logger() {
+    /*
+    PerfCountersBuilder pcb(g_ceph_context, "febft", l_paxos_first, l_paxos_last);
+
+    // Because monitors are so few in number, the resource cost of capturing
+    // almost all their perf counters at USEFUL is trivial.
+    pcb.set_prio_default(PerfCountersBuilder::PRIO_USEFUL);
+
+    pcb.add_u64_counter(l_paxos_start_leader, "start_leader", "Starts in leader role");
+    pcb.add_u64_counter(l_paxos_start_peon, "start_peon", "Starts in peon role");
+    pcb.add_u64_counter(l_paxos_restart, "restart", "Restarts");
+    pcb.add_u64_counter(l_paxos_refresh, "refresh", "Refreshes");
+    pcb.add_time_avg(l_paxos_refresh_latency, "refresh_latency", "Refresh latency");
+    pcb.add_u64_counter(l_paxos_begin, "begin", "Started and handled begins");
+    pcb.add_u64_avg(l_paxos_begin_keys, "begin_keys", "Keys in transaction on begin");
+    pcb.add_u64_avg(l_paxos_begin_bytes, "begin_bytes", "Data in transaction on begin", NULL, 0, unit_t(UNIT_BYTES));
+    pcb.add_time_avg(l_paxos_begin_latency, "begin_latency", "Latency of begin operation");
+    pcb.add_u64_counter(l_paxos_commit, "commit",
+                        "Commits", "cmt");
+    pcb.add_u64_avg(l_paxos_commit_keys, "commit_keys", "Keys in transaction on commit");
+    pcb.add_u64_avg(l_paxos_commit_bytes, "commit_bytes", "Data in transaction on commit", NULL, 0, unit_t(UNIT_BYTES));
+    pcb.add_time_avg(l_paxos_commit_latency, "commit_latency",
+                     "Commit latency", "clat");
+    pcb.add_u64_counter(l_paxos_collect, "collect", "Peon collects");
+    pcb.add_u64_avg(l_paxos_collect_keys, "collect_keys", "Keys in transaction on peon collect");
+    pcb.add_u64_avg(l_paxos_collect_bytes, "collect_bytes", "Data in transaction on peon collect", NULL, 0,
+                    unit_t(UNIT_BYTES));
+    pcb.add_time_avg(l_paxos_collect_latency, "collect_latency", "Peon collect latency");
+    pcb.add_u64_counter(l_paxos_collect_uncommitted, "collect_uncommitted",
+                        "Uncommitted values in started and handled collects");
+    pcb.add_u64_counter(l_paxos_collect_timeout, "collect_timeout", "Collect timeouts");
+    pcb.add_u64_counter(l_paxos_accept_timeout, "accept_timeout", "Accept timeouts");
+    pcb.add_u64_counter(l_paxos_lease_ack_timeout, "lease_ack_timeout", "Lease acknowledgement timeouts");
+    pcb.add_u64_counter(l_paxos_lease_timeout, "lease_timeout", "Lease timeouts");
+    pcb.add_u64_counter(l_paxos_store_state, "store_state", "Store a shared state on disk");
+    pcb.add_u64_avg(l_paxos_store_state_keys, "store_state_keys", "Keys in transaction in stored state");
+    pcb.add_u64_avg(l_paxos_store_state_bytes, "store_state_bytes", "Data in transaction in stored state", NULL, 0,
+                    unit_t(UNIT_BYTES));
+    pcb.add_time_avg(l_paxos_store_state_latency, "store_state_latency", "Storing state latency");
+    pcb.add_u64_counter(l_paxos_share_state, "share_state", "Sharings of state");
+    pcb.add_u64_avg(l_paxos_share_state_keys, "share_state_keys", "Keys in shared state");
+    pcb.add_u64_avg(l_paxos_share_state_bytes, "share_state_bytes", "Data in shared state", NULL, 0,
+                    unit_t(UNIT_BYTES));
+    pcb.add_u64_counter(l_paxos_new_pn, "new_pn", "New proposal number queries");
+    pcb.add_time_avg(l_paxos_new_pn_latency, "new_pn_latency", "New proposal number getting latency");
+    logger = pcb.create_perf_counters();
+    g_ceph_context->get_perfcounters_collection()->add(logger);*/
+}
 
 void FebftSMR::init() {
 
