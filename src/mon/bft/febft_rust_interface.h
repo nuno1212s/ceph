@@ -9,7 +9,7 @@
 //Handle executed
 SizedData *transform_ceph_buffer_to_rust(const ceph::buffer::list &bl);
 
-ceph::buffer::list transform_rust_buffer_to_ceph(SizedData &data, bool copy = false);
+ceph::buffer::list transform_rust_buffer_to_ceph(SizedData &data, bool copy);
 
 void handle_refresh(void *smr, uint64_t seqno) {
     auto febft_smr = (FebftSMR *) smr;

@@ -470,9 +470,11 @@ Transaction *translate_transaction(MonitorDBStore::TransactionRef t) {
                 auto prefix = op.prefix;
                 auto key = op.key;
 
-                std::unique_ptr<SizedData> data = transform_ceph_buffer_to_rust(op.bl);
+                //We don't need to free this data because when we pass it on to rust,
+                //It will be released as soon as the transaction is finished
+                auto * data = transform_ceph_buffer_to_rust(op.bl);
 
-                auto req = init_write_put_req(prefix.c_str(), key.c_str(), &*data);
+                auto req = init_write_put_req(prefix.c_str(), key.c_str(), data);
 
                 requests[i] = req;
 

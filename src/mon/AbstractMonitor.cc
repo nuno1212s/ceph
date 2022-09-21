@@ -2797,11 +2797,6 @@ void AbstractMonitor::handle_timecheck(MonOpRequestRef op) {
     }
 }
 
-
-/*
- * this is the closest thing to a traditional 'mkfs' for ceph.
- * initialize the monitor state machines to their initial values.
- */
 int AbstractMonitor::mkfs(ceph::buffer::list &osdmapbl) {
     auto t(std::make_shared<MonitorDBStore::Transaction>());
 
