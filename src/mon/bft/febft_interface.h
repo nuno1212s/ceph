@@ -17,10 +17,10 @@ struct CephRequest;
 
 struct NoPersistentLog;
 
+
 /// Represents a replica in `febft`.
 template<typename S = void, typename T = void>
 struct Replica;
-
 
 /// Represents a sequence number attributed to a client request
 /// during a `Consensus` instance.
@@ -30,6 +30,58 @@ struct SeqNo;
 struct Transaction;
 
 struct TransactionReply;
+
+/// Represents the result of a set operation on the KV database
+struct KVSetFunction {
+  uint32_t err;
+  const char *errormsg;
+};
+
+/// A struct that represents a sized data structure in C
+struct SizedData {
+  const uint8_t *data;
+  size_t size;
+};
+
+/// A function to set a given value to a certain value in the kvdb
+using SetFunction = KVSetFunction(*)(void *db, char *prefix, char *key, SizedData data);
+
+/// Represents the result of a get operation on the KV database
+struct KVGetResult {
+  SizedData *result;
+  uint32_t err;
+  const char *errormsg;
+};
+
+/// A function to get a given value from the kvdb
+using GetFunction = KVGetResult(*)(void *db, char *prefix, char *key);
+
+///Represents the result of a rm operation on the KV database
+struct KVRMResult {
+  uint32_t err;
+  const char *errormsg;
+};
+
+/// A function to rm a given key from the kvdb
+using RmKeyFunction = KVRMResult(*)(void *db, char *prefix, char *key);
+
+///Represents the result of a rm range operation on the KV database
+struct KVRMRangeResult {
+  uint32_t err;
+  const char *errormsg;
+};
+
+/// A function to remove a given range of values from the kvdb
+using RmKeyRangeFunction = KVRMRangeResult(*)(void *db, char *prefix, char *start, char *end);
+
+///A representation of the rocksdb key value store in rust
+struct KVDB {
+  void *db;
+  SetFunction set_f;
+  GetFunction get_f;
+  RmKeyFunction rm_key_f;
+  RmKeyRangeFunction rm_range_f;
+};
 
 /// The result of attempting to initialize a client
 struct ClientResult {
@@ -49,11 +101,6 @@ struct ReplicaResult {
   char *str;
 };
 
-struct SizedData {
-  const uint8_t *data;
-  size_t size;
-};
-
 extern "C" {
 
 ///Dispose of the given replies. This will deallocate the memory
@@ -64,6 +111,8 @@ void dispose_of_replies(TransactionReply *replies);
 /// corresponding to the replies that are contained within
 void dispose_of_transaction(Transaction *transaction);
 
+///Perform a blocking request.
+/// Disposes of the transaction used.
 TransactionReply *do_blocking_request(CephClient *client, Transaction *request);
 
 void febft_shutdown(void *guard);
@@ -84,6 +133,13 @@ uint32_t get_view_seq(CephClient *client);
 
 void *init(size_t threadpool_threads, size_t async_threads, size_t replica_id);
 
+/// Initialize the key value db representation
+KVDB *initKVDB(void *db,
+               SetFunction set,
+               GetFunction get,
+               RmKeyFunction rm_key,
+               RmKeyRangeFunction rm_range);
+
 ///Initialize a febft client
 ///Ceph will then use this client to propose operations on the SMR
 ClientResult init_client(uint32_t rank,
@@ -99,7 +155,7 @@ CephRequest *init_read_req(const char *prefix, const char *key);
 ///Initialize a febft replica
 ///Ceph will not interact with the generated replica, only with the client.
 /// This replica will continue to run "independently" of ceph
-ReplicaResult init_replica(uint32_t rank);
+ReplicaResult init_replica(uint32_t rank, KVDB *kv_db);
 
 ///Initialize a transaction object with the given requests
 ///Requests should be passed in an array (C Style) with the corresponding size
@@ -121,7 +177,7 @@ bool is_leader(CephClient *client);
 bool is_valid_read_response(TransactionReply *response);
 
 ///Checks if the given transaction reply has all valid responses.
-/// If a single transaction was not successfull this reports.
+/// If a single transaction was not sucessfull this reports.
 /// In theory, ceph's model kinda expects ACID transactions, but that would be for a later time, and would be
 /// at the executor level.
 bool is_valid_write_response(TransactionReply *response);

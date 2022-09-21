@@ -311,12 +311,6 @@ public:
      */
     void sync_force(ceph::Formatter *f);
 
-    /*
-    * this is the closest thing to a traditional 'mkfs' for ceph.
-    * initialize the monitor state machines to their initial values.
-    */
-    int mkfs(ceph::buffer::list &osdmapbl) override;
-
 private:
     /**
      * store critical state for safekeeping during sync

@@ -104,6 +104,8 @@ void FebftSMR::init() {
 
     this->guard = ::init(4, 4, this->replica_id);
 
+    auto kv_db = ::initKVDB(this->mon.store, ::set_db, ::get_from_db, ::rm_key_db, ::rm_range_db);
+
     dout(10) << __func__ << " initializing febft thread" << dendl;
 
 //    std::thread init_febft_thread([this]() {
@@ -111,7 +113,7 @@ void FebftSMR::init() {
 
     dout(10) << __func__ << " initializing febft replica with id " << this->replica_id << dendl;
 
-    auto replica_result = ::init_replica(this->replica_id);
+    auto replica_result = ::init_replica(this->replica_id, kv_db);
 
     if (replica_result.error != 0) {
 

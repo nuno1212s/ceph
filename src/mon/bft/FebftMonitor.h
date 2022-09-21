@@ -62,12 +62,6 @@ public:
 
     void _ms_dispatch(Message *m) override;
 
-    /*
-    * this is the closest thing to a traditional 'mkfs' for ceph.
-    * initialize the monitor state machines to their initial values.
-    */
-    int mkfs(ceph::buffer::list &osdmapbl) override;
-
 protected:
 
 

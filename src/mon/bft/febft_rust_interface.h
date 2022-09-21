@@ -7,24 +7,113 @@
 //Handle prepare
 //Handle commit phase
 //Handle executed
+SizedData *transform_ceph_buffer_to_rust(const ceph::buffer::list &bl);
+
+ceph::buffer::list transform_rust_buffer_to_ceph(SizedData &data, bool copy = false);
 
 void handle_refresh(void *smr, uint64_t seqno) {
-    auto febft_smr = (FebftSMR * ) smr;
+    auto febft_smr = (FebftSMR *) smr;
 
     febft_smr->handle_committed_values(seqno);
 }
 
-void handle_smr_prepare_phase(void *smr, uint64_t seqno) {
-    //state updating
+KVGetResult get_from_db(void *db, char *prefix, char *key) {
+
+    KVGetResult get_result {};
+
+    auto kv_db = (MonitorDBStore *) db;
+
+    std::string prefix_str(prefix);
+    std::string key_str(key);
+
+    ceph::buffer::list bl;
+
+    int err = kv_db->get(prefix_str, key_str, bl);
+
+    if (err != 0) {
+        get_result.err = err;
+        get_result.errormsg = "Failed to get prefix + key from db";
+        get_result.result = nullptr;
+    } else {
+        get_result.result = transform_ceph_buffer_to_rust(bl);
+        get_result.err = 0;
+        get_result.errormsg = nullptr;
+    }
+
+    return get_result;
 }
 
-void handle_smr_committed_phase(void *str, uint64_t seqno) {
-    //state writing
+KVSetFunction set_db(void *db, char *prefix, char *key, SizedData data) {
+
+    KVSetFunction set_result {};
+
+    auto kv_db = (MonitorDBStore *) db;
+
+    std::string prefix_str(prefix);
+    std::string key_str(key);
+
+    auto bl = transform_rust_buffer_to_ceph(data, true);
+
+    auto t(std::make_shared<MonitorDBStore::Transaction>());
+
+    t->put(prefix_str, key_str, bl);
+
+    kv_db->apply_transaction(t);
+
+    //TODO: See if there were any errors
+
+    set_result.err = 0;
+    set_result.errormsg = nullptr;
+
+    return set_result;
 }
 
-void handle_smr_executed_phase(void *str, uint64_t seqno) {
-    //Force refresh
-    //Set state active
+KVRMResult rm_key_db(void *db, char*prefix, char*key) {
+
+    KVRMResult rm_result {};
+
+
+    auto kv_db = (MonitorDBStore *) db;
+
+    std::string prefix_str(prefix);
+    std::string key_str(key);
+
+    auto t(std::make_shared<MonitorDBStore::Transaction>());
+
+    t->erase(prefix_str, key_str);
+
+    kv_db->apply_transaction(t);
+
+    //TODO: See if there were any errors
+
+    rm_result.err = 0;
+    rm_result.errormsg = nullptr;
+
+    return rm_result;
+}
+
+KVRMRangeResult  rm_range_db(void *db, char *prefix, char* start, char* end) {
+
+    KVRMRangeResult rm_result {};
+
+    auto kv_db = (MonitorDBStore *) db;
+
+    std::string prefix_str(prefix);
+    std::string start_str(start);
+    std::string end_str(end);
+
+    auto t(std::make_shared<MonitorDBStore::Transaction>());
+
+    t->erase_range(prefix_str, start_str, end_str);
+
+    kv_db->apply_transaction(t);
+
+    //TODO: See if there were any errors
+
+    rm_result.err = 0;
+    rm_result.errormsg = nullptr;
+
+    return rm_result;
 }
 
 void ctx_result_callback(void *context, int result) {
@@ -48,8 +137,8 @@ void ctx_callback(void *context) {
  * @param bl
  * @return
  */
-std::unique_ptr<SizedData> transform_ceph_buffer_to_rust(const ceph::buffer::list &bl) {
-    std::unique_ptr<SizedData> sized_data{new SizedData{(uint8_t *) bl.buffers().front().c_str(), bl.length()}};
+SizedData *transform_ceph_buffer_to_rust(const ceph::buffer::list &bl) {
+    auto *sized_data = new SizedData{(uint8_t *) bl.buffers().front().c_str(), bl.length()};
 
     return sized_data;
 }

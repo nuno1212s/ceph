@@ -538,8 +538,6 @@ int main(int argc, const char **argv) {
 
         FebftMonitor mon_2(g_ceph_context, g_conf()->name.get_id(), &store, 0, 0, &monmap);
 
-        mon_2.init();
-
         r = mon_2.mkfs(osdmapbl);
 
         if (r < 0) {

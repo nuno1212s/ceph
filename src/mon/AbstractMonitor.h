@@ -192,20 +192,22 @@ public:
             return prenautilus_local_mon_commands;
         }
     }
-    const ceph::buffer::list& get_local_commands_bl(mon_feature_t f) {
+
+    const ceph::buffer::list &get_local_commands_bl(mon_feature_t f) {
         if (f.contains_all(ceph::features::mon::FEATURE_NAUTILUS)) {
             return local_mon_commands_bl;
         } else {
             return prenautilus_local_mon_commands_bl;
         }
     }
-    void set_leader_commands(const std::vector<MonCommand>& cmds) {
+
+    void set_leader_commands(const std::vector<MonCommand> &cmds) {
         leader_mon_commands = cmds;
     }
 
 public:
 
-    virtual const char * get_state_name() const = 0;
+    virtual const char *get_state_name() const = 0;
 
     void prepare_new_fingerprint(MonitorDBStore::TransactionRef t);
 
@@ -217,7 +219,7 @@ public:
         return get_leader() == rank;
     }
 
-    bool is_peon () {
+    bool is_peon() {
         return get_leader() != rank;
     }
 
@@ -665,7 +667,11 @@ public:
 
     void handle_signal(int sig);
 
-    virtual int mkfs(ceph::buffer::list &osdmapbl) = 0;
+/*
+ * this is the closest thing to a traditional 'mkfs' for ceph.
+ * initialize the monitor state machines to their initial values.
+ */
+    int mkfs(ceph::buffer::list &osdmapbl);
 
     /**
      * check cluster_fsid file
@@ -793,7 +799,9 @@ public:
     version_t timecheck_round{};
     unsigned int timecheck_acks{};
     utime_t timecheck_round_start;
+
     friend class HealthMonitor;
+
     /* When we hit a skew we will start a new round based off of
      * 'mon_timecheck_skew_interval'. Each new round will be backed off
      * until we hit 'mon_timecheck_interval' -- which is the typical
@@ -809,14 +817,23 @@ public:
     Context *timecheck_event{};
 
     void timecheck_start();
+
     void timecheck_finish();
+
     void timecheck_start_round();
+
     void timecheck_finish_round(bool success = true);
+
     void timecheck_cancel_round();
+
     void timecheck_cleanup();
+
     void timecheck_reset_event();
+
     void timecheck_check_skews();
+
     void timecheck_report();
+
     void timecheck();
 
     health_status_t timecheck_status(std::ostringstream &ss,
@@ -828,6 +845,7 @@ public:
 private:
 
     void handle_timecheck_leader(MonOpRequestRef op);
+
     void handle_timecheck_peon(MonOpRequestRef op);
 
 public:
@@ -853,7 +871,9 @@ public:
 
 
     virtual bool is_stretch_mode() = 0;
+
     virtual bool is_degraded_stretch_mode() = 0;
+
     virtual bool is_recovering_stretch_mode() = 0;
 
     /**
@@ -869,17 +889,26 @@ public:
      * updates across the entire cluster.
      */
     virtual void try_engage_stretch_mode() = 0;
+
     virtual void maybe_go_degraded_stretch_mode() = 0;
-    virtual void trigger_degraded_stretch_mode(const std::set<std::string>& dead_mons,
-                                       const std::set<int>& dead_buckets) = 0;
+
+    virtual void trigger_degraded_stretch_mode(const std::set<std::string> &dead_mons,
+                                               const std::set<int> &dead_buckets) = 0;
+
     virtual void set_degraded_stretch_mode() = 0;
+
     virtual void go_recovery_stretch_mode() = 0;
+
     virtual void set_recovery_stretch_mode() = 0;
+
     virtual void trigger_healthy_stretch_mode() = 0;
+
     virtual void set_healthy_stretch_mode() = 0;
+
     //This is also not implemented in regular ceph
     virtual void enable_stretch_mode() = 0;
-    virtual void set_mon_crush_location(const std::string& loc) = 0;
+
+    virtual void set_mon_crush_location(const std::string &loc) = 0;
 
     /**
      * }@
@@ -943,8 +972,10 @@ struct C_MgrProxyCommand : public Context {
     uint64_t size;
     bufferlist outbl;
     std::string outs;
+
     C_MgrProxyCommand(AbstractMonitor *mon, MonOpRequestRef op, uint64_t s)
-            : mon(mon), op(op), size(s) { }
+            : mon(mon), op(op), size(s) {}
+
     void finish(int r) {
         std::lock_guard l(mon->lock);
         mon->mgr_proxy_bytes -= size;
