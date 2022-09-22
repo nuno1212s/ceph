@@ -2363,6 +2363,9 @@ void OSDMonitor::load_osdmap_manifest()
   bool store_has_manifest =
     mon.store->exists(get_service_name(), "osdmap_manifest");
 
+    dout(20) << __func__
+             << " Store has manifest? "<< get_service_name() << ":" << "osdmap_manifest" <<  " " << store_has_manifest << dendl;
+
   if (!store_has_manifest) {
     if (!has_osdmap_manifest) {
       return;
