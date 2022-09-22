@@ -2382,7 +2382,7 @@ void OSDMonitor::load_osdmap_manifest()
            << " osdmap manifest detected in store; reload." << dendl;
 
   bufferlist manifest_bl;
-  int r = get_value("osdmap_manifest", manifest_bl);
+  int r = mon.store->get(get_service_name(), "osdmap_manifest", manifest_bl);
   if (r < 0) {
     derr << __func__ << " unable to read osdmap version manifest" << dendl;
     ceph_abort_msg("error reading manifest");
