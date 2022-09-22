@@ -364,7 +364,7 @@ version_t FebftSMR::read_current_from_service(const std::string &service_name, c
 
         dout(10) << "Failed to read current version from service, as there is no such key" << dendl;
 
-        return 1;
+        return 0;
     }
 
     SizedData sized_data = read_read_response_from(reply);
