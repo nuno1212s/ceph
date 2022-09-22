@@ -496,6 +496,12 @@ int FebftMonitor::init() {
     dout(2) << "init FEBFT" << dendl;
     febft->init();
 
+    for (auto &svc: services) {
+        svc->init();
+    }
+
+    refresh_from_smr(NULL);
+
     dout(2) << " Adding dispatcher tail" << dendl;
     // i'm ready!
     messenger->add_dispatcher_tail(this);
