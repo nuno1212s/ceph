@@ -667,10 +667,10 @@ public:
 
     void handle_signal(int sig);
 
-/*
- * this is the closest thing to a traditional 'mkfs' for ceph.
- * initialize the monitor state machines to their initial values.
- */
+    /*
+     * this is the closest thing to a traditional 'mkfs' for ceph.
+     * initialize the monitor state machines to their initial values.
+     */
     int mkfs(ceph::buffer::list &osdmapbl);
 
     /**
