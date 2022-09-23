@@ -435,11 +435,11 @@ void FebftSMR::cancel_events() {
 }
 
 MonitorDBStore *FebftSMR::get_store() {
-    return nullptr;
+    return this->mon.store;
 }
 
 std::string FebftSMR::get_name() const {
-    return std::string();
+    return name;
 }
 
 Transaction *init_read_transaction(const std::string &svc_name, const std::string &key) {
