@@ -2327,14 +2327,17 @@ void OSDMonitor::encode_trim_extra(MonitorDBStore::TransactionRef tx,
  */
 
 void OSDMonitor::load_osdmap_manifest() {
+    bufferlist manifest_bl;
+
     int exists = mon.store->get(get_service_name(), "osdmap_manifest", manifest_bl);
+
+    //It exists if there was no error getting it
+    bool store_has_manifest = exists == 0;
 
     dout(20) << __func__
              << " Store has manifest? " << get_service_name() << ":" << "osdmap_manifest" << " " << store_has_manifest
              << dendl;
 
-    //It exists if there was no error getting it
-    bool store_has_manifest = exists == 0;
 
     if (!store_has_manifest) {
         if (!has_osdmap_manifest) {
@@ -2350,9 +2353,8 @@ void OSDMonitor::load_osdmap_manifest() {
 
     dout(20) << __func__
              << " osdmap manifest detected in store; reload." << dendl;
-    bufferlist manifest_bl;
-    int r = mon.store->get(get_service_name(), "osdmap_manifest", manifest_bl);
-    if (r < 0) {
+//    int r = mon.store->get(get_service_name(), "osdmap_manifest", manifest_bl);
+    if (exists < 0) {
         derr << __func__ << " unable to read osdmap version manifest" << dendl;
         ceph_abort_msg("error reading manifest");
     }
