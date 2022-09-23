@@ -2327,12 +2327,13 @@ void OSDMonitor::encode_trim_extra(MonitorDBStore::TransactionRef tx,
  */
 
 void OSDMonitor::load_osdmap_manifest() {
-    bool store_has_manifest =
-            mon.store->exists(get_service_name(), "osdmap_manifest");
+    int r = mon.store->get(get_service_name(), "osdmap_manifest", manifest_bl);
 
     dout(20) << __func__
              << " Store has manifest? " << get_service_name() << ":" << "osdmap_manifest" << " " << store_has_manifest
              << dendl;
+
+    bool store_has_manifest = r == 0;
 
     if (!store_has_manifest) {
         if (!has_osdmap_manifest) {
@@ -2348,14 +2349,6 @@ void OSDMonitor::load_osdmap_manifest() {
 
     dout(20) << __func__
              << " osdmap manifest detected in store; reload." << dendl;
-    dout(20) << __func__
-             << " test, lets see what keys there are " << dendl;
-
-    KeyValueDB::Iterator it = mon.store->get_iterator(get_service_name());
-    for (it->seek_to_first(); it->valid(); it->next()) {
-        dout(20) <<"key: "<< it->key() << ""<< dendl;
-    }
-
     bufferlist manifest_bl;
     int r = mon.store->get(get_service_name(), "osdmap_manifest", manifest_bl);
     if (r < 0) {
