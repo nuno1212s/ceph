@@ -877,11 +877,11 @@ int main(int argc, const char **argv) {
         prefork.exit(1);
     }
 
-    mon = (AbstractMonitor *) new PaxosMonitor(g_ceph_context, g_conf()->name.get_id(), store,
-                                               msgr, mgr_msgr, &monmap);
-
-//    mon = (AbstractMonitor *) new FebftMonitor(g_ceph_context, g_conf()->name.get_id(), store,
+//    mon = (AbstractMonitor *) new PaxosMonitor(g_ceph_context, g_conf()->name.get_id(), store,
 //                                               msgr, mgr_msgr, &monmap);
+
+    mon = (AbstractMonitor *) new FebftMonitor(g_ceph_context, g_conf()->name.get_id(), store,
+                                               msgr, mgr_msgr, &monmap);
 
     mon->orig_argc = argc;
     mon->orig_argv = argv;
