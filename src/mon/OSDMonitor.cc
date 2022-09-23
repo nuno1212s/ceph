@@ -2327,13 +2327,14 @@ void OSDMonitor::encode_trim_extra(MonitorDBStore::TransactionRef tx,
  */
 
 void OSDMonitor::load_osdmap_manifest() {
-    int r = mon.store->get(get_service_name(), "osdmap_manifest", manifest_bl);
+    int exists = mon.store->get(get_service_name(), "osdmap_manifest", manifest_bl);
 
     dout(20) << __func__
              << " Store has manifest? " << get_service_name() << ":" << "osdmap_manifest" << " " << store_has_manifest
              << dendl;
 
-    bool store_has_manifest = r == 0;
+    //It exists if there was no error getting it
+    bool store_has_manifest = exists == 0;
 
     if (!store_has_manifest) {
         if (!has_osdmap_manifest) {
